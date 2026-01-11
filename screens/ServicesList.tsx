@@ -1,18 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  TextInput, Modal, Alert, Platform, SafeAreaView
+  TextInput, Modal, Alert, SafeAreaView
 } from 'react-native';
-import { Picker } from '@react-native-picker/picker'; // Wymaga: npx expo install @react-native-picker/picker
+import { Picker } from '@react-native-picker/picker';
 import { useAppContext } from '../store/AppContext';
 import {
   Plus, Trash2, Edit2, Search, ChevronDown, ChevronRight,
-  X, Tag, Save, FolderPlus, Package, AlertCircle
+  X, Save, FolderPlus
 } from 'lucide-react-native';
-import { Service, UnitOfMeasure, MaterialItem, MaterialMode } from '../types';
+import { Service, UnitOfMeasure, MaterialItem, MaterialMode, Category } from '../types';
 
 const ServicesList: React.FC = () => {
-  const { state, addService, updateService, deleteService, addCategory, deleteCategory } = useAppContext();
+  const { state, addService, updateService, setActiveScreen, deleteService, addCategory, deleteCategory } = useAppContext();
   const { darkMode, categories, services } = state;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -20,36 +20,30 @@ const ServicesList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [newCatName, setNewCatName] = useState('');
-  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
+
+  const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
 
   const [formData, setFormData] = useState({
     name: '', description: '', netPrice: '', vatRate: '8',
-    unit: 'm2' as UnitOfMeasure, categoryId: '',
+    unit: 'm2' as UnitOfMeasure, categoryId: 'cat_general', // DOMYŚLNIE OGÓLNA
     materialMode: 'estimated' as MaterialMode, estimatedMaterialPrice: '',
     materials: [] as MaterialItem[]
   });
 
-  const [newMaterial, setNewMaterial] = useState({ name: '', price: '', unit: 'szt' as UnitOfMeasure, consumption: '' });
-
-  // --- Kategorie ---
-  const handleDeleteCategory = (categoryId: string, categoryName: string) => {
-    Alert.alert(
-      "OSTRZEŻENIE",
-      `Usunięcie kategorii "${categoryName}" spowoduje usunięcie WSZYSTKICH przypisanych do niej usług. Kontynuować?`,
-      [
-        { text: "Anuluj", style: "cancel" },
-        { text: "Usuń wszystko", style: "destructive", onPress: () => deleteCategory(categoryId) }
-      ]
-    );
-  };
-
-  const handleAddCategory = () => {
-    if (!newCatName.trim()) return;
-    addCategory({ id: Date.now().toString(), name: newCatName.trim() });
+  const handleAddCategory = async () => {
+    if (!newCatName.trim()) {
+      Alert.alert("Błąd", "Wpisz nazwę kategorii.");
+      return;
+    }
+    const newCat: Category = { id: Date.now().toString(), name: newCatName.trim() };
+    await addCategory(newCat);
     setNewCatName('');
+    setIsCatModalOpen(false);
   };
 
-  // --- Formularz ---
+useEffect(() => {
+  setActiveScreen('Usługi'); // lub odpowiednia nazwa
+}, []);
   const handleSubmit = () => {
     if (!formData.name || !formData.netPrice) {
       Alert.alert("Błąd", "Podaj nazwę i cenę usługi.");
@@ -63,7 +57,8 @@ const ServicesList: React.FC = () => {
       netPrice: parseFloat(formData.netPrice) || 0,
       vatRate: parseInt(formData.vatRate),
       unit: formData.unit,
-      categoryId: formData.categoryId || undefined,
+      // Jeśli puste, wymuszamy cat_general
+      categoryId: formData.categoryId || 'cat_general',
       materialMode: formData.materialMode,
       estimatedMaterialPrice: formData.materialMode === 'estimated' ? parseFloat(formData.estimatedMaterialPrice) : 0,
       defaultMaterials: formData.materialMode === 'detailed' ? formData.materials : []
@@ -75,7 +70,11 @@ const ServicesList: React.FC = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', description: '', netPrice: '', vatRate: '8', unit: 'm2', categoryId: '', materialMode: 'estimated', estimatedMaterialPrice: '', materials: [] });
+    setFormData({
+      name: '', description: '', netPrice: '', vatRate: '8',
+      unit: 'm2', categoryId: 'cat_general',
+      materialMode: 'estimated', estimatedMaterialPrice: '', materials: []
+    });
     setEditingService(null);
     setIsModalOpen(false);
   };
@@ -88,7 +87,7 @@ const ServicesList: React.FC = () => {
       netPrice: service.netPrice.toString(),
       vatRate: service.vatRate.toString(),
       unit: service.unit,
-      categoryId: service.categoryId || '',
+      categoryId: service.categoryId || 'cat_general',
       materialMode: service.materialMode || 'estimated',
       estimatedMaterialPrice: service.estimatedMaterialPrice?.toString() || '',
       materials: service.defaultMaterials || []
@@ -100,7 +99,7 @@ const ServicesList: React.FC = () => {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: darkMode ? '#020617' : '#f8fafc' }]}>
-      {/* Search & Add Category */}
+
       <View style={styles.topBar}>
         <View style={[styles.searchWrapper, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
           <Search size={18} color="#64748b" />
@@ -121,34 +120,99 @@ const ServicesList: React.FC = () => {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
-        {categories.map(cat => (
-          <View key={cat.id} style={styles.catSection}>
-            <TouchableOpacity
-              onPress={() => setExpandedCats(prev => ({...prev, [cat.id]: !prev[cat.id]}))}
-              style={styles.catHeader}
-            >
-              <Text style={[styles.catTitle, { color: darkMode ? '#94a3b8' : '#1e293b' }]}>{cat.name.toUpperCase()}</Text>
-              {expandedCats[cat.id] ? <ChevronDown size={16} color="#2563eb" /> : <ChevronRight size={16} color="#64748b" />}
-            </TouchableOpacity>
+        {/* RENDEROWANIE KATEGORII Z BAZY */}
+        {categories.map(cat => {
+          const catServices = filteredServices.filter(s => s.categoryId === cat.id);
+          const isCollapsed = collapsedCats[cat.id] || false;
 
-            {!expandedCats[cat.id] && (
-              <View style={styles.serviceGrid}>
-                {filteredServices.filter(s => s.categoryId === cat.id).map(service => (
-                  <ServiceCard key={service.id} service={service} darkMode={darkMode} onEdit={() => handleEdit(service)} onDelete={() => deleteService(service.id)} />
-                ))}
+          return (
+            <View key={cat.id} style={styles.catSection}>
+              <View style={styles.catHeader}>
+                <TouchableOpacity
+                  onPress={() => setCollapsedCats(prev => ({...prev, [cat.id]: !isCollapsed}))}
+                  style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+                >
+                  <Text style={[styles.catTitle, { color: darkMode ? '#94a3b8' : '#1e293b' }]}>
+                      {cat.name.toUpperCase()} ({catServices.length})
+                  </Text>
+                  {isCollapsed ? <ChevronRight size={16} color="#64748b" /> : <ChevronDown size={16} color="#2563eb" />}
+                </TouchableOpacity>
+
+                {/* Blokada usuwania domyślnej kategorii */}
+                {cat.id !== 'cat_general' && (
+                  <TouchableOpacity onPress={() => {
+                    Alert.alert("Usuń kategorię", `Czy usunąć "${cat.name}"? Usługi zostaną przeniesione do kategorii Ogólna.`, [
+                      { text: "Anuluj", style: "cancel" },
+                      { text: "Usuń", style: "destructive", onPress: () => deleteCategory(cat.id) }
+                    ]);
+                  }}>
+                    <Trash2 size={16} color="#ef4444" opacity={0.6} />
+                  </TouchableOpacity>
+                )}
               </View>
-            )}
-          </View>
-        ))}
+
+              {!isCollapsed && (
+                <View style={styles.serviceGrid}>
+                  {catServices.map(service => (
+                    <ServiceCard
+                      key={service.id}
+                      service={service}
+                      darkMode={darkMode}
+                      onEdit={() => handleEdit(service)}
+                      onDelete={() => deleteService(service.id)}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        })}
+
+        {/* FALLBACK: Usługi które nie pasują do żadnej kategorii w state */}
+        {(() => {
+          const orphaned = filteredServices.filter(s => !categories.find(c => c.id === s.categoryId));
+          if (orphaned.length === 0) return null;
+          return (
+            <View style={styles.catSection}>
+              <Text style={[styles.catTitle, { color: '#ef4444', marginBottom: 10 }]}>NIEPRZYPISANE ({orphaned.length})</Text>
+              <View style={styles.serviceGrid}>
+                {orphaned.map(s => <ServiceCard key={s.id} service={s} darkMode={darkMode} onEdit={() => handleEdit(s)} onDelete={() => deleteService(s.id)} />)}
+              </View>
+            </View>
+          );
+        })()}
       </ScrollView>
 
-      {/* FAB */}
       <TouchableOpacity onPress={() => setIsModalOpen(true)} style={styles.fab}>
         <Plus size={32} color="#fff" />
       </TouchableOpacity>
 
+      {/* MODAL KATEGORII */}
+      <Modal visible={isCatModalOpen} transparent animationType="fade" onRequestClose={() => setIsCatModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+            <View style={[styles.catModalContent, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
+                <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#000', marginBottom: 15 }]}>Nowa kategoria</Text>
+                <TextInput
+                    style={[styles.input, { backgroundColor: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#fff' : '#000' }]}
+                    placeholder="Wpisz nazwę..."
+                    placeholderTextColor="#64748b"
+                    value={newCatName}
+                    onChangeText={setNewCatName}
+                />
+                <View style={[styles.row, { marginTop: 20 }]}>
+                    <TouchableOpacity onPress={() => setIsCatModalOpen(false)} style={[styles.saveBtn, { flex: 1, backgroundColor: '#64748b' }]}>
+                        <Text style={styles.saveBtnText}>ANULUJ</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleAddCategory} style={[styles.saveBtn, { flex: 1, marginLeft: 10 }]}>
+                        <Text style={styles.saveBtnText}>DODAJ</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </View>
+      </Modal>
+
       {/* MODAL USŁUGI */}
-      <Modal visible={isModalOpen} animationType="slide">
+      <Modal visible={isModalOpen} animationType="slide" onRequestClose={resetForm}>
         <SafeAreaView style={[styles.modalBody, { backgroundColor: darkMode ? '#020617' : '#fff' }]}>
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#000' }]}>{editingService ? 'Edycja' : 'Nowa usługa'}</Text>
@@ -162,9 +226,9 @@ const ServicesList: React.FC = () => {
                 selectedValue={formData.categoryId}
                 onValueChange={(v) => setFormData({...formData, categoryId: v})}
                 style={{ color: darkMode ? '#fff' : '#000' }}
+                dropdownIconColor={darkMode ? '#fff' : '#000'}
               >
-                <option label="Bez kategorii" value="" />
-                {categories.map(c => <option key={c.id} label={c.name} value={c.id} />)}
+                {categories.map(c => <Picker.Item key={c.id} label={c.name} value={c.id} />)}
               </Picker>
             </View>
 
@@ -193,9 +257,9 @@ const ServicesList: React.FC = () => {
                     onValueChange={(v) => setFormData({...formData, unit: v as UnitOfMeasure})}
                     style={{ color: darkMode ? '#fff' : '#000' }}
                   >
-                    <option label="m2" value="m2" />
-                    <option label="mb" value="mb" />
-                    <option label="szt" value="szt" />
+                    <Picker.Item label="m2" value="m2" />
+                    <Picker.Item label="mb" value="mb" />
+                    <Picker.Item label="szt" value="szt" />
                   </Picker>
                 </View>
               </View>
@@ -223,6 +287,7 @@ const ServiceCard = ({ service, darkMode, onEdit, onDelete }: any) => (
   </View>
 );
 
+// Style pozostają bez zmian jak w oryginale
 const styles = StyleSheet.create({
   container: { flex: 1 },
   topBar: { flexDirection: 'row', padding: 16, gap: 10 },
@@ -243,11 +308,13 @@ const styles = StyleSheet.create({
   modalBody: { flex: 1 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
   modalTitle: { fontSize: 20, fontWeight: '900' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  catModalContent: { width: '100%', borderRadius: 25, padding: 25, elevation: 10 },
   label: { fontSize: 9, fontWeight: '900', color: '#64748b', marginBottom: 5, marginTop: 15 },
   input: { height: 50, borderRadius: 12, paddingHorizontal: 15, fontWeight: 'bold' },
-  pickerBox: { borderRadius: 12, height: 50, justifyContent: 'center' },
+  pickerBox: { borderRadius: 12, height: 50, justifyContent: 'center', overflow: 'hidden' },
   row: { flexDirection: 'row', gap: 10 },
-  saveBtn: { backgroundColor: '#2563eb', height: 60, borderRadius: 15, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 30 },
+  saveBtn: { backgroundColor: '#2563eb', height: 60, borderRadius: 15, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 10 },
   saveBtnText: { color: '#fff', fontWeight: '900' }
 });
 

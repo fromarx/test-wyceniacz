@@ -1,16 +1,26 @@
-// db.ts
 import * as SQLite from 'expo-sqlite';
 
+let dbInstance: SQLite.SQLiteDatabase | null = null;
+
+/**
+ * Zwraca istniejące połączenie lub tworzy nowe, jeśli nie istnieje.
+ * Zapobiega błędom NullPointerException przy równoległych zapytaniach.
+ */
 export const getDbConnection = async () => {
-  return await SQLite.openDatabaseAsync('QuoteMasterProDB.db');
+  if (!dbInstance) {
+    dbInstance = await SQLite.openDatabaseAsync('QuoteMasterProDB.db');
+  }
+  return dbInstance;
 };
 
 export const initDatabase = async () => {
   const db = await getDbConnection();
 
   try {
+    // Włączamy WAL (wydajność) oraz Foreign Keys (spójność danych)
     await db.execAsync(`
       PRAGMA journal_mode = WAL;
+      PRAGMA foreign_keys = ON;
 
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY NOT NULL,
@@ -19,15 +29,16 @@ export const initDatabase = async () => {
         logo TEXT, notificationsEnabled INTEGER, pdfThemeColor TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS categories (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS services (
         id TEXT PRIMARY KEY NOT NULL,
         name TEXT, description TEXT, netPrice REAL, vatRate REAL,
-        unit TEXT, categoryId TEXT, materialMode TEXT, estimatedMaterialPrice REAL
-      );
-
-      CREATE TABLE IF NOT EXISTS categories (
-        id TEXT PRIMARY KEY NOT NULL,
-        name TEXT
+        unit TEXT, categoryId TEXT, materialMode TEXT, estimatedMaterialPrice REAL,
+        FOREIGN KEY (categoryId) REFERENCES categories (id) ON DELETE SET NULL
       );
 
       CREATE TABLE IF NOT EXISTS clients (
@@ -40,7 +51,8 @@ export const initDatabase = async () => {
       CREATE TABLE IF NOT EXISTS clientReminders (
         id TEXT PRIMARY KEY NOT NULL,
         clientId TEXT, date TEXT, time TEXT, topic TEXT,
-        completed INTEGER, notified INTEGER
+        completed INTEGER, notified INTEGER,
+        FOREIGN KEY (clientId) REFERENCES clients (id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS quotes (
@@ -57,24 +69,21 @@ export const initDatabase = async () => {
         id TEXT PRIMARY KEY NOT NULL,
         quoteId TEXT, serviceId TEXT, name TEXT, quantity REAL,
         netPrice REAL, vatRate REAL, unit TEXT, materialMode TEXT,
-        estimatedMaterialPrice REAL
+        estimatedMaterialPrice REAL,
+        FOREIGN KEY (quoteId) REFERENCES quotes (id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS materials (
         id TEXT PRIMARY KEY NOT NULL,
         quoteItemId TEXT, name TEXT, price REAL, unit TEXT,
-        quantity REAL, consumption REAL
+        quantity REAL, consumption REAL,
+        FOREIGN KEY (quoteItemId) REFERENCES quoteItems (id) ON DELETE CASCADE
       );
 
       CREATE TABLE IF NOT EXISTS shoppingLists (
         id TEXT PRIMARY KEY NOT NULL,
-        name TEXT, quoteId TEXT, createdAt TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS shoppingItems (
-        id TEXT PRIMARY KEY NOT NULL,
-        shoppingListId TEXT, name TEXT, quantity REAL,
-        unit TEXT, price REAL, isBought INTEGER
+        name TEXT, createdAt TEXT,
+        items TEXT
       );
 
       CREATE TABLE IF NOT EXISTS settings (
@@ -85,5 +94,6 @@ export const initDatabase = async () => {
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Error initializing database:", error);
+    throw error;
   }
 };

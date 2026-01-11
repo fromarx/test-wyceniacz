@@ -29,7 +29,7 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ forced = false }) => {
-  const { state, updateUser, toggleDarkMode, requestNotificationPermission, exportAllData } = useAppContext();
+  const { state, updateUser, setActiveScreen, toggleDarkMode, requestNotificationPermission, exportAllData } = useAppContext();
   const { user, darkMode, subscriptionStatus } = state;
   const navigation = useNavigation();
 
@@ -84,6 +84,10 @@ const Profile: React.FC<ProfileProps> = ({ forced = false }) => {
       setIsExporting(false);
     }
   };
+
+useEffect(() => {
+  setActiveScreen('Profil');
+}, []);
 
   const pickLogo = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({

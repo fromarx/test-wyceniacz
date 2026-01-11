@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -13,7 +13,7 @@ import { useAppContext } from '../store/AppContext';
 import { Search, ChevronRight, Edit3 } from 'lucide-react-native';
 import { QuoteStatus } from '../types';
 
-// Definicja typów dla nawigacji (opcjonalna, ale dobra praktyka)
+
 type RootStackParamList = {
   QuoteDetails: { id: string };
   NewQuote: { id: string };
@@ -22,10 +22,14 @@ type RootStackParamList = {
 
 const QuoteList: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { state } = useAppContext();
+  const { state, setActiveScreen } = useAppContext();
   const { darkMode } = state;
   const [activeTab, setActiveTab] = useState<QuoteStatus | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
+
+useEffect(() => {
+  setActiveScreen('Wyceny'); // lub odpowiednia nazwa
+}, []);
 
   const tabs = [
     { id: 'all', label: 'Wszystkie' },

@@ -44,7 +44,6 @@ export interface ShoppingItem {
 export interface ShoppingList {
   id: string;
   name: string;
-  quoteId?: string;
   createdAt: string;
   items: ShoppingItem[];
 }
@@ -148,6 +147,7 @@ export interface AppState {
   quotes: Quote[];
   shoppingLists: ShoppingList[];
   darkMode: boolean;
+  activeScreenName: string;
   subscriptionStatus: SubscriptionStatus;
   hasMoreQuotes: boolean,
   currentQuotesPage: number

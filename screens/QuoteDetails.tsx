@@ -11,7 +11,7 @@ import {
 } from 'lucide-react-native';
 import { QuoteStatus } from '../types';
 import { FinanceUtils } from '../utils/FinanceUtils';
-// import { PdfGenerator } from '../utils/PdfServiceMobile'; // Wymaga osobnej implementacji dla mobile
+ import { PdfGenerator } from '../utils/PdfServiceMobile'; // Wymaga osobnej implementacji dla mobile
 
 const QuoteDetails: React.FC = () => {
   const navigation = useNavigation<any>();

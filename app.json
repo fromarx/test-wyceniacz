@@ -11,6 +11,19 @@
       "eas": {
         "projectId": "dd7aa3aa-09de-4dce-a5bc-b608b18bf8eb"
       }
+    },
+    "android": {
+      "package": "com.frosowsky.wycena",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "statusBar": {
+        "hidden": true
+      },
+      "navigationBar": {
+        "visible": false
+      }
     }
   },
   "name": "Wycena"

@@ -1,307 +1,406 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  ScrollView, 
-  StyleSheet, 
-  Switch,
-  Modal,
-  Alert,
-  Platform
+  View, Text, TextInput, TouchableOpacity, ScrollView,
+  StyleSheet, Modal, Alert, Platform, KeyboardAvoidingView
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppContext } from '../store/AppContext';
-import { 
-  Plus, Search, ChevronRight, X, Ruler, Package, Check, 
-  ChevronLeft, ShoppingCart, Calculator, Trash2, ChevronDown, 
-  ChevronUp, Edit3 
+import {
+  Plus, Search, ChevronRight, X, Ruler, Package, Check,
+  ChevronLeft, Trash2, Box, UserPlus, Briefcase, FileText, Settings2
 } from 'lucide-react-native';
-import { 
-  Quote, QuoteItem, QuoteStatus, Service, UnitOfMeasure, 
-  MaterialItem, MaterialMode, Client 
+import {
+  Quote, QuoteItem, QuoteStatus, Service, UnitOfMeasure,
+  MaterialMode, Client, MaterialItem
 } from '../types';
+import { PdfGenerator } from '../utils/PdfGenerator'; // Upewnij się, że ścieżka jest poprawna
 
-// Typowanie parametrów trasy
 type RootStackParamList = {
   NewQuote: { id?: string };
   QuoteDetails: { id: string };
 };
-
-interface SelectionState {
-  name: string;
-  quantity: number;
-  laborPrice: number;
-  unit: UnitOfMeasure;
-  vatRate: number;
-  materialMode: MaterialMode;
-  estimatedMaterialPrice: number;
-  materials: MaterialItem[];
-  isCustom?: boolean;
-}
 
 const NewQuote: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, 'NewQuote'>>();
   const id = route.params?.id;
 
-  const { state, addQuote, updateQuote } = useAppContext();
-  const { darkMode, clients, services } = state;
-  
-  const isEditMode = !!id;
-  const existingQuote = useMemo(() => isEditMode ? state.quotes.find(q => q.id === id) : null, [id, state.quotes]);
+  const { state, addQuote, updateQuote, addClient, setActiveScreen } = useAppContext();
+  const { darkMode, clients, services, user } = state;
 
-  const [step, setStep] = useState(isEditMode ? 2 : 1);
-  const [apartmentArea, setApartmentArea] = useState<string>('0');
-  const [includeMaterials, setIncludeMaterials] = useState(true);
+  const isEditMode = !!id;
+  const [step, setStep] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
-  const [expandedMaterials, setExpandedMaterials] = useState<Record<string, boolean>>({});
-  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
-  
+  const [showClientPicker, setShowClientPicker] = useState(false);
+
+  // --- STANY FORMULARZA ---
   const [clientInfo, setClientInfo] = useState({
-    clientId: '', firstName: '', lastName: '', phone: '', email: '', 
-    clientCompany: '', clientNip: '', serviceStreet: '', serviceHouseNo: '', 
+    clientId: '', firstName: '', lastName: '', phone: '', email: '',
+    clientCompany: '', clientNip: '', serviceStreet: '', serviceHouseNo: '',
     serviceApartmentNo: '', servicePostalCode: '', serviceCity: '',
-    estimatedCompletionDate: ''
   });
 
-  const [selectedItems, setSelectedItems] = useState<Record<string, SelectionState>>({});
+  const [selectedItems, setSelectedItems] = useState<QuoteItem[]>([]);
 
-  // Efekt ładowania danych przy edycji
-  useEffect(() => {
-    if (isEditMode && existingQuote) {
-      setClientInfo({
-        clientId: existingQuote.clientId || '',
-        firstName: existingQuote.clientFirstName,
-        lastName: existingQuote.clientLastName,
-        phone: existingQuote.clientPhone,
-        email: existingQuote.clientEmail || '',
-        clientCompany: existingQuote.clientCompany || '',
-        clientNip: existingQuote.clientNip || '',
-        serviceStreet: existingQuote.serviceStreet,
-        serviceHouseNo: existingQuote.serviceHouseNo,
-        serviceApartmentNo: existingQuote.serviceApartmentNo || '',
-        servicePostalCode: existingQuote.servicePostalCode,
-        serviceCity: existingQuote.serviceCity,
-        estimatedCompletionDate: existingQuote.estimatedCompletionDate || ''
-      });
+  // Stan dla nowej usługi "z ręki"
+  const [customService, setCustomService] = useState<Partial<QuoteItem>>({
+    name: '', netPrice: 0, quantity: 1, unit: 'm2', vatRate: 8,
+    materialMode: 'estimated', estimatedMaterialPrice: 0, materials: []
+  });
 
-      const itemsMap: Record<string, SelectionState> = {};
-      existingQuote.items.forEach((item, index) => {
-        const key = item.serviceId === 'custom' ? `custom_${index}` : item.serviceId;
-        itemsMap[key] = {
-          name: item.name,
-          quantity: item.quantity,
-          laborPrice: item.netPrice,
-          unit: item.unit,
-          vatRate: item.vatRate,
-          materialMode: item.materialMode,
-          estimatedMaterialPrice: item.estimatedMaterialPrice || 0,
-          materials: item.materials,
-          isCustom: item.serviceId === 'custom'
-        };
-      });
-      setSelectedItems(itemsMap);
-    }
-  }, [isEditMode, existingQuote]);
+  // Stan dla pojedynczego materiału wewnątrz usługi
+  const [tempMaterial, setTempMaterial] = useState<Partial<MaterialItem>>({
+    name: '', price: 0, consumption: 1, unit: 'szt'
+  });
 
-  const handleNextStep = () => {
-    if (!clientInfo.firstName || !clientInfo.lastName || !clientInfo.serviceCity) {
-      Alert.alert("Błąd", "Wypełnij wymagane pola klienta.");
-      return;
-    }
-    setStep(step + 1);
-  };
+  useEffect(() => { setActiveScreen('Nowa wycena'); }, []);
 
-  const toggleService = (s: Service) => {
-    setSelectedItems(prev => {
-      const newItems = { ...prev };
-      if (newItems[s.id]) {
-        delete newItems[s.id];
-      } else {
-        newItems[s.id] = { 
-          name: s.name, unit: s.unit, vatRate: s.vatRate, quantity: 1, 
-          laborPrice: s.netPrice, materialMode: 'estimated', 
-          estimatedMaterialPrice: s.estimatedMaterialPrice || 0, 
-          materials: s.defaultMaterials || []
-        };
-      }
-      return newItems;
+  // --- LOGIKA KLIENTA ---
+  const handleSelectClient = (c: Client) => {
+    setClientInfo({
+      clientId: c.id, firstName: c.firstName, lastName: c.lastName, phone: c.phone,
+      email: c.email || '', clientCompany: c.companyName || '', clientNip: c.nip || '',
+      serviceStreet: c.street, serviceHouseNo: c.houseNo, serviceApartmentNo: c.apartmentNo || '',
+      servicePostalCode: c.postalCode, serviceCity: c.city
     });
+    setShowClientPicker(false);
   };
 
-  const calculateTotals = () => {
-    let net = 0; let vat = 0;
-    Object.values(selectedItems).forEach(item => {
-      const labor = item.laborPrice * item.quantity;
-      const mat = includeMaterials ? (item.materialMode === 'estimated' ? item.estimatedMaterialPrice * item.quantity : 0) : 0;
-      const itemNet = labor + mat;
-      net += itemNet;
-      vat += itemNet * (item.vatRate / 100);
-    });
-    return { net, vat, gross: net + vat };
+  const saveClientToDb = async () => {
+    if (!clientInfo.firstName || !clientInfo.phone) return Alert.alert("Błąd", "Imię i telefon są wymagane.");
+    const newClient: Client = {
+      id: `cli_${Date.now()}`, firstName: clientInfo.firstName, lastName: clientInfo.lastName,
+      phone: clientInfo.phone, email: clientInfo.email, companyName: clientInfo.clientCompany,
+      nip: clientInfo.clientNip, street: clientInfo.serviceStreet, houseNo: clientInfo.serviceHouseNo,
+      city: clientInfo.serviceCity, postalCode: clientInfo.servicePostalCode, createdAt: new Date().toISOString()
+    };
+    await addClient(newClient);
+    setClientInfo(prev => ({ ...prev, clientId: newClient.id }));
+    Alert.alert("Sukces", "Klient zapisany w bazie.");
   };
 
-  const handleSave = () => {
-    const totals = calculateTotals();
-    const allItems: QuoteItem[] = Object.entries(selectedItems).map(([key, data]) => ({
-      id: Math.random().toString(),
-      serviceId: data.isCustom ? 'custom' : key,
-      name: data.name,
-      quantity: data.quantity,
-      netPrice: data.laborPrice,
-      vatRate: data.vatRate,
-      unit: data.unit,
-      materialMode: data.materialMode,
-      estimatedMaterialPrice: data.estimatedMaterialPrice,
-      materials: data.materials
-    }));
+  // --- LOGIKA USŁUG I MATERIAŁÓW ---
+  const addMaterialToCustom = () => {
+    if (!tempMaterial.name || !tempMaterial.price) return;
+    const newItem: MaterialItem = {
+      id: `mat_${Date.now()}`, name: tempMaterial.name, price: Number(tempMaterial.price),
+      unit: tempMaterial.unit as UnitOfMeasure, quantity: 0, consumption: Number(tempMaterial.consumption) || 1
+    };
+    setCustomService(prev => ({ ...prev, materials: [...(prev.materials || []), newItem] }));
+    setTempMaterial({ name: '', price: 0, consumption: 1, unit: 'szt' });
+  };
 
-    if (isEditMode && existingQuote) {
-      updateQuote({ ...existingQuote, ...clientInfo, items: allItems, ...totals });
+  const addServiceToQuote = (s?: Service) => {
+    const newItem: QuoteItem = s ? {
+      id: `item_${Date.now()}`, serviceId: s.id, name: s.name, quantity: 1,
+      netPrice: s.netPrice, vatRate: s.vatRate, unit: s.unit,
+      materialMode: s.materialMode, estimatedMaterialPrice: s.estimatedMaterialPrice,
+      materials: s.defaultMaterials || []
+    } : {
+      ...(customService as QuoteItem),
+      id: `item_${Date.now()}`, serviceId: 'custom'
+    };
+
+    setSelectedItems([...selectedItems, newItem]);
+    if (!s) setCustomService({ name: '', netPrice: 0, quantity: 1, unit: 'm2', vatRate: 8, materialMode: 'estimated', estimatedMaterialPrice: 0, materials: [] });
+  };
+
+  // --- OBLICZENIA ---
+  const calculateItemTotal = (item: QuoteItem) => {
+    const labor = item.netPrice * item.quantity;
+    let materials = 0;
+    if (item.materialMode === 'estimated') {
+      materials = (item.estimatedMaterialPrice || 0) * item.quantity;
     } else {
-      const newQuote: Quote = {
-        id: Math.random().toString(),
-        number: `WYC/${new Date().getFullYear()}/${state.quotes.length + 1}`,
-        date: new Date().toLocaleDateString('pl-PL'),
-        status: QuoteStatus.DRAFT,
-        ...clientInfo,
-        items: allItems,
-        totalNet: totals.net,
-        totalVat: totals.vat,
-        totalGross: totals.gross,
-        clientFirstName: clientInfo.firstName,
-        clientLastName: clientInfo.lastName,
-        clientPhone: clientInfo.phone,
-        clientEmail: clientInfo.email,
-        clientCompany: clientInfo.clientCompany,
-        serviceStreet: clientInfo.serviceStreet,
-        serviceHouseNo: clientInfo.serviceHouseNo,
-        serviceApartmentNo: clientInfo.serviceApartmentNo,
-        servicePostalCode: clientInfo.servicePostalCode,
-        serviceCity: clientInfo.serviceCity
-      };
-      addQuote(newQuote);
+      materials = item.materials.reduce((sum, m) => sum + (m.price * (m.consumption || 1) * item.quantity), 0);
     }
+    const net = labor + materials;
+    return { net, vat: net * (item.vatRate / 100), gross: net * (1 + item.vatRate / 100) };
+  };
+
+  const getFinalTotals = () => {
+    return selectedItems.reduce((acc, item) => {
+      const res = calculateItemTotal(item);
+      return { net: acc.net + res.net, vat: acc.vat + res.vat, gross: acc.gross + res.gross };
+    }, { net: 0, vat: 0, gross: 0 });
+  };
+
+  const handleFinalSave = async () => {
+    const totals = getFinalTotals();
+    const quoteData: Quote = {
+      id: isEditMode ? id! : `q_${Date.now()}`,
+      number: `WYC/${new Date().getFullYear()}/${state.quotes.length + 1}`,
+      date: new Date().toLocaleDateString('pl-PL'),
+      status: QuoteStatus.DRAFT,
+      ...clientInfo,
+      clientFirstName: clientInfo.firstName, clientLastName: clientInfo.lastName,
+      clientPhone: clientInfo.phone, clientEmail: clientInfo.email,
+      clientCompany: clientInfo.clientCompany, serviceStreet: clientInfo.serviceStreet,
+      serviceHouseNo: clientInfo.serviceHouseNo, serviceApartmentNo: clientInfo.serviceApartmentNo,
+      servicePostalCode: clientInfo.servicePostalCode, serviceCity: clientInfo.serviceCity,
+      items: selectedItems, totalNet: totals.net, totalVat: totals.vat, totalGross: totals.gross
+    };
+
+    if (isEditMode) updateQuote(quoteData);
+    else addQuote(quoteData);
+
+    await PdfGenerator.download(quoteData, user);
     navigation.goBack();
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: darkMode ? '#020617' : '#f8fafc' }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : navigation.goBack()}>
-          <ChevronLeft color={darkMode ? '#fff' : '#000'} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: darkMode ? '#fff' : '#000' }]}>
-          {isEditMode ? 'Edycja Wyceny' : 'Nowa Wycena'}
-        </Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <View style={[styles.container, { backgroundColor: darkMode ? '#020617' : '#f8fafc' }]}>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {step === 1 && (
-          <View style={styles.stepContainer}>
-            <Text style={[styles.sectionTitle, { color: darkMode ? '#f1f5f9' : '#1e293b' }]}>Dane Zleceniodawcy</Text>
-            <View style={[styles.card, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}>
-              <CustomInput label="Imię" value={clientInfo.firstName} onChangeText={v => setClientInfo({...clientInfo, firstName: v})} darkMode={darkMode} />
-              <CustomInput label="Nazwisko" value={clientInfo.lastName} onChangeText={v => setClientInfo({...clientInfo, lastName: v})} darkMode={darkMode} />
-              <CustomInput label="Telefon" value={clientInfo.phone} onChangeText={v => setClientInfo({...clientInfo, phone: v})} darkMode={darkMode} keyboardType="phone-pad" />
-              <CustomInput label="Miejscowość" value={clientInfo.serviceCity} onChangeText={v => setClientInfo({...clientInfo, serviceCity: v})} darkMode={darkMode} />
-              <CustomInput label="Ulica i numer" value={clientInfo.serviceStreet} onChangeText={v => setClientInfo({...clientInfo, serviceStreet: v})} darkMode={darkMode} />
-            </View>
-            <TouchableOpacity style={styles.primaryButton} onPress={handleNextStep}>
-              <Text style={styles.buttonText}>DALEJ DO USŁUG</Text>
-            </TouchableOpacity>
+        {/* HEADER */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : navigation.goBack()}>
+            <ChevronLeft color={darkMode ? '#fff' : '#64748b'} size={28} />
+          </TouchableOpacity>
+          <View style={styles.stepIndicator}>
+            {[1, 2, 3].map(s => (
+              <View key={s} style={[styles.stepDot, step >= s && styles.stepDotActive]} />
+            ))}
           </View>
-        )}
+          <View style={{ width: 28 }} />
+        </View>
 
-        {step === 2 && (
-          <View style={styles.stepContainer}>
-            <Text style={[styles.sectionTitle, { color: darkMode ? '#f1f5f9' : '#1e293b' }]}>Katalog Usług</Text>
-            <TextInput 
-              style={[styles.searchInput, { backgroundColor: darkMode ? '#0f172a' : '#fff', color: darkMode ? '#fff' : '#000' }]}
-              placeholder="Szukaj usługi..."
-              value={searchTerm}
-              onChangeText={setSearchTerm}
-            />
-            {services.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase())).map(s => {
-              const isSelected = !!selectedItems[s.id];
-              return (
-                <TouchableOpacity 
-                  key={s.id} 
-                  onPress={() => toggleService(s)}
-                  style={[styles.serviceItem, { backgroundColor: isSelected ? '#2563eb' : (darkMode ? '#0f172a' : '#fff') }]}
-                >
-                  <Text style={{ color: isSelected ? '#fff' : (darkMode ? '#cbd5e1' : '#334155'), fontWeight: 'bold' }}>{s.name}</Text>
-                  <Plus size={20} color={isSelected ? '#fff' : '#2563eb'} />
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+
+          {/* KROK 1: KLIENT */}
+          {step === 1 && (
+            <View style={styles.stepContainer}>
+              <View style={styles.rowBetween}>
+                <Text style={[styles.sectionTitle, { color: darkMode ? '#f1f5f9' : '#1e293b' }]}>Zleceniodawca</Text>
+                <TouchableOpacity onPress={() => setShowClientPicker(true)} style={styles.linkBtn}>
+                  <Search size={16} color="#2563eb" />
+                  <Text style={styles.linkBtnText}>Baza klientów</Text>
                 </TouchableOpacity>
-              );
-            })}
-            <TouchableOpacity style={styles.primaryButton} onPress={() => setStep(3)}>
-              <Text style={styles.buttonText}>PODSUMOWANIE ({Object.keys(selectedItems).length})</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+              </View>
 
-        {step === 3 && (
-          <View style={styles.stepContainer}>
-             <Text style={[styles.sectionTitle, { color: darkMode ? '#f1f5f9' : '#1e293b' }]}>Podsumowanie</Text>
-             {Object.entries(selectedItems).map(([key, item]) => (
-               <View key={key} style={[styles.card, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
-                 <Text style={{ color: darkMode ? '#fff' : '#000', fontWeight: 'bold' }}>{item.name}</Text>
-                 <View style={styles.row}>
-                    <Text style={{ color: '#64748b' }}>Ilość: {item.quantity} {item.unit}</Text>
-                    <Text style={{ color: darkMode ? '#fff' : '#000' }}>{item.laborPrice} zł</Text>
-                 </View>
-               </View>
-             ))}
-             <View style={styles.totalBox}>
-                <Text style={styles.totalLabel}>Suma Brutto:</Text>
-                <Text style={styles.totalValue}>{calculateTotals().gross.toLocaleString()} zł</Text>
-             </View>
-             <TouchableOpacity style={[styles.primaryButton, { backgroundColor: '#10b981' }]} onPress={handleSave}>
-              <Text style={styles.buttonText}>ZAPISZ WYCENĘ</Text>
+              <View style={[styles.card, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
+                <CustomInput label="Imię*" value={clientInfo.firstName} onChangeText={(v:any) => setClientInfo({...clientInfo, firstName: v})} darkMode={darkMode} />
+                <CustomInput label="Nazwisko*" value={clientInfo.lastName} onChangeText={(v:any) => setClientInfo({...clientInfo, lastName: v})} darkMode={darkMode} />
+                <CustomInput label="Telefon*" value={clientInfo.phone} onChangeText={(v:any) => setClientInfo({...clientInfo, phone: v})} darkMode={darkMode} keyboardType="phone-pad" />
+                <CustomInput label="Miejscowość" value={clientInfo.serviceCity} onChangeText={(v:any) => setClientInfo({...clientInfo, serviceCity: v})} darkMode={darkMode} />
+
+                {!clientInfo.clientId && clientInfo.firstName && (
+                  <TouchableOpacity style={styles.outlineAction} onPress={saveClientToDb}>
+                    <UserPlus size={18} color="#2563eb" />
+                    <Text style={styles.outlineActionText}>Zapisz w bazie na stałe</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* KROK 2: USŁUGI */}
+          {step === 2 && (
+            <View style={styles.stepContainer}>
+              <Text style={[styles.sectionTitle, { color: darkMode ? '#f1f5f9' : '#1e293b' }]}>Usługi i Materiały</Text>
+
+              <View style={[styles.card, { backgroundColor: darkMode ? '#1e293b' : '#eff6ff', borderColor: '#3b82f6' }]}>
+                <Text style={styles.cardLabel}>DODAJ USŁUGĘ "Z RĘKI"</Text>
+                <TextInput placeholder="Nazwa usługi..." style={styles.simpleInput} value={customService.name} onChangeText={v => setCustomService({...customService, name: v})} />
+                <View style={styles.row}>
+                  <TextInput placeholder="Cena netto" style={[styles.simpleInput, { flex: 2, marginRight: 10 }]} keyboardType="numeric" onChangeText={v => setCustomService({...customService, netPrice: Number(v)})} />
+                  <TextInput placeholder="jm" style={[styles.simpleInput, { flex: 1 }]} value={customService.unit} onChangeText={v => setCustomService({...customService, unit: v as any})} />
+                </View>
+
+                <View style={styles.modeToggle}>
+                  <TouchableOpacity onPress={() => setCustomService({...customService, materialMode: 'estimated'})} style={[styles.modeBtn, customService.materialMode === 'estimated' && styles.modeBtnActive]}>
+                    <Text style={styles.modeBtnText}>RYCZAŁT MAT.</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setCustomService({...customService, materialMode: 'detailed'})} style={[styles.modeBtn, customService.materialMode === 'detailed' && styles.modeBtnActive]}>
+                    <Text style={styles.modeBtnText}>LISTA MAT.</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {customService.materialMode === 'estimated' ? (
+                  <TextInput placeholder="Cena materiału na jm" style={styles.simpleInput} keyboardType="numeric" onChangeText={v => setCustomService({...customService, estimatedMaterialPrice: Number(v)})} />
+                ) : (
+                  <View style={styles.innerCard}>
+                    <TextInput placeholder="Nazwa materiału" style={styles.simpleInput} value={tempMaterial.name} onChangeText={v => setTempMaterial({...tempMaterial, name: v})} />
+                    <View style={styles.row}>
+                      <TextInput placeholder="Cena" style={[styles.simpleInput, { flex: 1, marginRight: 5 }]} keyboardType="numeric" value={tempMaterial.price?.toString()} onChangeText={v => setTempMaterial({...tempMaterial, price: Number(v)})} />
+                      <TextInput placeholder="Zużycie/jm" style={[styles.simpleInput, { flex: 1 }]} keyboardType="numeric" value={tempMaterial.consumption?.toString()} onChangeText={v => setTempMaterial({...tempMaterial, consumption: Number(v)})} />
+                    </View>
+                    <TouchableOpacity style={styles.addMatBtn} onPress={addMaterialToCustom}>
+                      <Plus size={14} color="#fff" />
+                      <Text style={styles.addMatBtnText}>DODAJ MATERIAŁ</Text>
+                    </TouchableOpacity>
+                    {customService.materials?.map(m => <Text key={m.id} style={styles.matListText}>• {m.name} ({m.price}zł x {m.consumption})</Text>)}
+                  </View>
+                )}
+
+                <TouchableOpacity style={styles.addServiceBtn} onPress={() => addServiceToQuote()}>
+                  <Text style={styles.addServiceBtnText}>DODAJ DO WYCENY</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.cardLabel}>LUB WYBIERZ Z KATALOGU</Text>
+              {services.map(s => (
+                <TouchableOpacity key={s.id} onPress={() => addServiceToQuote(s)} style={[styles.serviceItem, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
+                  <Text style={{ color: darkMode ? '#cbd5e1' : '#334155', flex: 1, fontWeight: 'bold' }}>{s.name}</Text>
+                  <Plus size={20} color="#2563eb" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* KROK 3: PODSUMOWANIE */}
+          {step === 3 && (
+            <View style={styles.stepContainer}>
+              <Text style={[styles.sectionTitle, { color: darkMode ? '#f1f5f9' : '#1e293b' }]}>Podsumowanie</Text>
+
+              {selectedItems.map((item, idx) => {
+                const res = calculateItemTotal(item);
+                return (
+                  <View key={item.id} style={[styles.summaryItem, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
+                    <View style={styles.rowBetween}>
+                      <Text style={styles.sumName}>{idx+1}. {item.name}</Text>
+                      <TouchableOpacity onPress={() => setSelectedItems(selectedItems.filter(i => i.id !== item.id))}>
+                        <Trash2 size={18} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.sumDetailRow}>
+                      <Text style={styles.sumLabel}>Ilość (metraż):</Text>
+                      <TextInput
+                        style={styles.sumInput}
+                        keyboardType="numeric"
+                        value={item.quantity.toString()}
+                        onChangeText={v => {
+                          const newItems = [...selectedItems];
+                          newItems[idx].quantity = Number(v);
+                          setSelectedItems(newItems);
+                        }}
+                      />
+                      <Text style={styles.sumLabel}>{item.unit}</Text>
+                    </View>
+
+                    <View style={styles.sumInfoRow}>
+                      <Text style={styles.sumSubLabel}>Robocizna: {item.netPrice * item.quantity} zł</Text>
+                      <Text style={styles.sumSubLabel}>Materiał: {res.net - (item.netPrice * item.quantity)} zł</Text>
+                    </View>
+                    <Text style={styles.sumTotal}>Suma pozycji: {res.gross.toFixed(2)} zł</Text>
+                  </View>
+                );
+              })}
+
+              <View style={styles.totalBox}>
+                <Text style={styles.totalLabel}>ŁĄCZNIE DO ZAPŁATY (BRUTTO)</Text>
+                <Text style={styles.totalValue}>{getFinalTotals().gross.toLocaleString()} zł</Text>
+              </View>
+            </View>
+          )}
+
+        </ScrollView>
+
+        {/* STOPKA NAWIGACJI */}
+        <View style={styles.footer}>
+          {step > 1 && (
+             <TouchableOpacity style={[styles.navBtn, styles.navBtnBack]} onPress={() => setStep(step - 1)}>
+              <ChevronLeft color="#64748b" />
+              <Text style={styles.navBtnBackText}>WSTECZ</Text>
             </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.navBtn, styles.navBtnNext, step === 3 && { backgroundColor: '#10b981' }]}
+            onPress={() => step < 3 ? setStep(step + 1) : handleFinalSave()}
+          >
+            <Text style={styles.navBtnNextText}>{step === 3 ? 'ZAPISZ I GENERUJ PDF' : 'DALEJ'}</Text>
+            {step < 3 && <ChevronRight color="#fff" />}
+          </TouchableOpacity>
+        </View>
+
+        {/* MODAL KLIENTA */}
+        <Modal visible={showClientPicker} animationType="slide">
+          <View style={[styles.modalContent, { backgroundColor: darkMode ? '#020617' : '#fff' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#000' }]}>Wybierz klienta</Text>
+              <TouchableOpacity onPress={() => setShowClientPicker(false)}><X size={24} color={darkMode ? '#fff' : '#000'} /></TouchableOpacity>
+            </View>
+            <ScrollView>
+              {clients.map(c => (
+                <TouchableOpacity key={c.id} style={styles.clientPickerItem} onPress={() => handleSelectClient(c)}>
+                  <Briefcase size={20} color="#64748b" />
+                  <View style={{ marginLeft: 12 }}>
+                    <Text style={{ fontWeight: 'bold', color: darkMode ? '#fff' : '#000' }}>{c.firstName} {c.lastName}</Text>
+                    <Text style={{ color: '#64748b', fontSize: 12 }}>{c.city}, {c.phone}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
-        )}
-      </ScrollView>
-    </View>
+        </Modal>
+      </View>
+    </KeyboardAvoidingView>
   );
 };
 
-// Pomocniczy komponent Inputa
 const CustomInput = ({ label, darkMode, ...props }: any) => (
   <View style={styles.inputWrapper}>
     <Text style={[styles.label, { color: darkMode ? '#64748b' : '#94a3b8' }]}>{label}</Text>
-    <TextInput 
-      style={[styles.input, { color: darkMode ? '#fff' : '#000', borderBottomColor: darkMode ? '#1e293b' : '#e2e8f0' }]} 
-      {...props} 
-    />
+    <TextInput style={[styles.input, { color: darkMode ? '#fff' : '#000', borderBottomColor: darkMode ? '#1e293b' : '#e2e8f0' }]} {...props} />
   </View>
 );
 
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: Platform.OS === 'ios' ? 50 : 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-  headerTitle: { fontSize: 18, fontWeight: 'bold' },
-  scrollContent: { padding: 16 },
-  stepContainer: { gap: 16 },
-  sectionTitle: { fontSize: 22, fontWeight: '900', marginBottom: 8 },
-  card: { borderRadius: 16, padding: 16, borderWidth: 1, gap: 12 },
-  inputWrapper: { gap: 4 },
-  label: { fontSize: 10, fontWeight: 'bold', uppercase: true },
-  input: { height: 40, borderBottomWidth: 1, fontSize: 16, paddingVertical: 8 },
-  searchInput: { height: 50, borderRadius: 12, paddingHorizontal: 16, fontSize: 14, marginBottom: 8 },
-  serviceItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 12, marginBottom: 8 },
-  primaryButton: { backgroundColor: '#2563eb', padding: 20, borderRadius: 16, alignItems: 'center', marginTop: 20 },
-  buttonText: { color: '#fff', fontWeight: '900', letterSpacing: 1 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  totalBox: { padding: 20, backgroundColor: '#1e293b', borderRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  totalLabel: { color: '#94a3b8', fontWeight: 'bold' },
-  totalValue: { color: '#fff', fontSize: 20, fontWeight: '900' }
+  container: { flex: 1 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingTop: Platform.OS === 'ios' ? 40 : 16 },
+  stepIndicator: { flexDirection: 'row', gap: 8 },
+  stepDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#e2e8f0' },
+  stepDotActive: { backgroundColor: '#2563eb', width: 20 },
+  scrollContent: { padding: 16, paddingBottom: 100 },
+  stepContainer: { gap: 20 },
+  sectionTitle: { fontSize: 26, fontWeight: '900' },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center' },
+  card: { borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#e2e8f0', elevation: 2 },
+  cardLabel: { fontSize: 10, fontWeight: '900', color: '#3b82f6', marginBottom: 10, letterSpacing: 1 },
+  inputWrapper: { marginBottom: 15 },
+  label: { fontSize: 10, fontWeight: 'bold', marginBottom: 5 },
+  input: { height: 45, borderBottomWidth: 1, fontSize: 16 },
+  simpleInput: { height: 48, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 15, marginBottom: 12, borderWidth: 1, borderColor: '#d1d5db', fontSize: 14 },
+  modeToggle: { flexDirection: 'row', gap: 10, marginBottom: 15 },
+  modeBtn: { flex: 1, padding: 12, borderRadius: 12, backgroundColor: '#cbd5e1', alignItems: 'center' },
+  modeBtnActive: { backgroundColor: '#2563eb' },
+  modeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 10 },
+  innerCard: { backgroundColor: '#f1f5f9', padding: 15, borderRadius: 16, marginBottom: 10 },
+  addMatBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#64748b', padding: 10, borderRadius: 10, alignSelf: 'flex-start' },
+  addMatBtnText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  matListText: { fontSize: 11, color: '#475569', marginTop: 5, fontStyle: 'italic' },
+  addServiceBtn: { backgroundColor: '#2563eb', padding: 16, borderRadius: 15, alignItems: 'center', marginTop: 10 },
+  addServiceBtnText: { color: '#fff', fontWeight: 'bold' },
+  serviceItem: { flexDirection: 'row', padding: 18, borderRadius: 18, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0' },
+  summaryItem: { padding: 20, borderRadius: 24, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0' },
+  sumName: { fontSize: 16, fontWeight: 'bold' },
+  sumDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 15 },
+  sumInput: { width: 60, height: 40, borderBottomWidth: 2, borderBottomColor: '#2563eb', textAlign: 'center', fontWeight: 'bold', fontSize: 16 },
+  sumLabel: { color: '#64748b', fontWeight: 'bold' },
+  sumInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  sumSubLabel: { fontSize: 11, color: '#94a3b8' },
+  sumTotal: { fontSize: 16, fontWeight: '900', color: '#2563eb', marginTop: 10, textAlign: 'right' },
+  totalBox: { padding: 30, backgroundColor: '#1e293b', borderRadius: 28, alignItems: 'center', marginVertical: 20 },
+  totalLabel: { color: '#94a3b8', fontSize: 11, fontWeight: 'bold', letterSpacing: 1 },
+  totalValue: { color: '#fff', fontSize: 36, fontWeight: '900', marginTop: 8 },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: 'rgba(255,255,255,0.9)', flexDirection: 'row', gap: 10 },
+  navBtn: { flex: 2, height: 60, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
+  navBtnBack: { flex: 1, backgroundColor: '#f1f5f9' },
+  navBtnNext: { backgroundColor: '#2563eb' },
+  navBtnBackText: { color: '#64748b', fontWeight: 'bold' },
+  navBtnNextText: { color: '#fff', fontWeight: '900' },
+  modalContent: { flex: 1, padding: 20, paddingTop: 50 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+  modalTitle: { fontSize: 22, fontWeight: '900' },
+  clientPickerItem: { flexDirection: 'row', alignItems: 'center', padding: 18, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  linkBtnText: { color: '#2563eb', fontWeight: 'bold', fontSize: 12 },
+  outlineAction: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 15, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#2563eb', borderStyle: 'dashed' },
+  outlineActionText: { color: '#2563eb', fontWeight: 'bold', fontSize: 12 }
 });
 
 export default NewQuote;
