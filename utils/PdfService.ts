@@ -1,5 +1,5 @@
 import { Quote, User } from '../types';
-import { PdfTemplate } from './PdfTemplate';
+import { PdfTemplate } from './PDFTemplate';
 
 declare const html2pdf: any;
 

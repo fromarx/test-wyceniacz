@@ -14,7 +14,7 @@ import {
   Quote, QuoteItem, QuoteStatus, Service, UnitOfMeasure,
   MaterialMode, Client, MaterialItem
 } from '../types';
-import { PdfGenerator } from '../utils/PdfGenerator'; // Upewnij się, że ścieżka jest poprawna
+import { PdfGenerator } from '../utils/PdfService'; // Upewnij się, że ścieżka jest poprawna
 
 type RootStackParamList = {
   NewQuote: { id?: string };

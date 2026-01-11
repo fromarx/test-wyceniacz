@@ -10,9 +10,10 @@ import React, {
 import { Platform, View, ActivityIndicator, Text, StyleSheet, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
-import RevenueCatUI, { PAYWALL_RESULT } from "react-native-purchases-ui";
 
+import PaywallScreen from '../components/PaywallScreen';
 import { initDatabase, getDbConnection } from '../db/db';
+
 import {
   AppState,
   User,
@@ -23,22 +24,6 @@ import {
   ShoppingList,
   SubscriptionStatus
 } from '../types';
-
-/* ============================= */
-/* ===== PAYWALL HELPER ======== */
-/* ============================= */
-export async function presentPaywall(): Promise<boolean> {
-  try {
-    const paywallResult: PAYWALL_RESULT = await RevenueCatUI.presentPaywall();
-    return (
-      paywallResult === PAYWALL_RESULT.PURCHASED ||
-      paywallResult === PAYWALL_RESULT.RESTORED
-    );
-  } catch (e) {
-    console.error("Paywall Error:", e);
-    return false;
-  }
-}
 
 const QUOTES_PER_PAGE = 20;
 
@@ -60,9 +45,9 @@ const upsert = async (table: string, item: any) => {
   const placeholders = keys.map(() => '?').join(',');
 
   await executeSql(
-    `INSERT INTO ${table} (${keys.join(',')}) VALUES (${placeholders}) ON CONFLICT(id) DO UPDATE SET ${assignments}`,
-    Object.values(item)
-  );
+      `INSERT OR REPLACE INTO ${table} (${keys.join(',')}) VALUES (${placeholders})`,
+      Object.values(item)
+    );
 };
 
 /* ============================= */
@@ -116,7 +101,6 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [isReady, setIsReady] = useState(false);
   const [isLoadingQuotes, setIsLoadingQuotes] = useState(false);
 
-  // Funkcja zmiany nazwy ekranu w nagłówku
   const setActiveScreen = useCallback((name: string) => {
     setState(prev => ({ ...prev, activeScreenName: name }));
   }, []);
@@ -125,17 +109,21 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     try {
       if (!(await Purchases.isConfigured())) return SubscriptionStatus.NONE;
       const info: CustomerInfo = await Purchases.getCustomerInfo();
-      const isActive = info.entitlements.active['Fromed Pro'] !== undefined;
-      return isActive ? SubscriptionStatus.ACTIVE : SubscriptionStatus.NONE;
-    } catch (e) {
-      console.error("Subscription Error:", e);
+      return info.entitlements.active['Fromed Pro']
+        ? SubscriptionStatus.ACTIVE
+        : SubscriptionStatus.NONE;
+    } catch {
       return SubscriptionStatus.NONE;
     }
   }, []);
 
+  /* ============================= */
+  /* ===== INIT ================= */
+  /* ============================= */
   useEffect(() => {
-    let isMounted = true;
-    const init = async () => {
+    let mounted = true;
+
+    (async () => {
       try {
         await initDatabase();
         const db = await getDbConnection();
@@ -144,66 +132,126 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
           const apiKey = Platform.select({
             ios: 'twoj_klucz_ios',
             android: 'test_aJPikIwIYUvlNeohuVTKgNQYcDq'
-          }) || 'test_aJPikIwIYUvlNeohuVTKgNQYcDq';
+          })!;
           await Purchases.configure({ apiKey });
         }
 
-        const subStatus = await checkSubscription();
+        const subscriptionStatus = await checkSubscription();
 
-        const [userRaw, darkModeRaw, quotes, services, categoriesRaw, clients, shoppingListsRaw] = await Promise.all([
+        const [
+          userRaw,
+          darkModeRaw,
+          quotes,
+          services,
+          categoriesRaw,
+          clients,
+          shoppingListsRaw
+        ] = await Promise.all([
           AsyncStorage.getItem('user'),
           AsyncStorage.getItem('darkMode'),
-          db.getAllAsync<Quote>(`SELECT * FROM quotes ORDER BY date DESC LIMIT ?`, [QUOTES_PER_PAGE]),
+          db.getAllAsync<Quote>('SELECT * FROM quotes ORDER BY date DESC LIMIT ?', [QUOTES_PER_PAGE]),
           db.getAllAsync<Service>('SELECT * FROM services'),
           db.getAllAsync<Category>('SELECT * FROM categories'),
           db.getAllAsync<Client>('SELECT * FROM clients'),
           db.getAllAsync<any>('SELECT * FROM shoppingLists')
         ]);
 
-        // LOGIKA DOMYŚLNEJ KATEGORII
-        let finalCategories = categoriesRaw || [];
-        const hasGeneral = finalCategories.some(c => c.name.toLowerCase() === 'ogólna');
-
-        if (!hasGeneral) {
-          const generalCat: Category = { id: 'cat_general', name: 'Ogólna' };
-          await db.runAsync('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)', [generalCat.id, generalCat.name]);
-          finalCategories = [generalCat, ...finalCategories];
+        let categories = categoriesRaw || [];
+        if (!categories.some(c => c.name.toLowerCase() === 'ogólna')) {
+          const general: Category = { id: 'cat_general', name: 'Ogólna' };
+          await db.runAsync(
+            'INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)',
+            [general.id, general.name]
+          );
+          categories = [general, ...categories];
         }
 
-        const shoppingLists: ShoppingList[] = (shoppingListsRaw || []).map((list: any) => ({
-          ...list,
-          items: typeof list.items === 'string' ? JSON.parse(list.items) : []
+        const shoppingLists: ShoppingList[] = (shoppingListsRaw || []).map(l => ({
+          ...l,
+          items: typeof l.items === 'string'
+                     ? JSON.parse(l.items)
+                     : Array.isArray(l.items)
+                     ? l.items
+                     : []
         }));
 
-        if (isMounted) {
-          setState(prev => ({
-            ...prev,
-            user: userRaw ? JSON.parse(userRaw) : {
-                id: `mob_${Date.now()}`,
-                email: '', firstName: '', lastName: '',
-                companyName: '', address: '', city: '', postalCode: ''
-            },
+        if (mounted) {
+          setState(s => ({
+            ...s,
+            user: userRaw
+              ? JSON.parse(userRaw)
+              : {
+                  id: `mob_${Date.now()}`,
+                  email: '',
+                  firstName: '',
+                  lastName: '',
+                  companyName: '',
+                  address: '',
+                  city: '',
+                  postalCode: ''
+                },
             darkMode: darkModeRaw !== 'false',
             quotes: quotes || [],
             services: services || [],
-            categories: finalCategories,
+            categories,
             clients: clients || [],
-            shoppingLists: shoppingLists,
-            subscriptionStatus: subStatus,
+            shoppingLists,
+            subscriptionStatus,
             hasMoreQuotes: (quotes || []).length === QUOTES_PER_PAGE
           }));
         }
-      } catch (e) {
-        console.error("KRYTYCZNY BŁĄD INIT W CONTEXT:", e);
       } finally {
-        if (isMounted) setIsReady(true);
+        if (mounted) setIsReady(true);
       }
+    })();
+
+    return () => {
+      mounted = false;
     };
-    init();
-    return () => { isMounted = false; };
   }, [checkSubscription]);
 
-  // --- HANDLERS ---
+  /* ============================= */
+  /* ===== QUOTES =============== */
+  /* ============================= */
+
+  const mapListToDb = (l: ShoppingList) => ({
+    id: l.id,
+    name: l.name,
+    createdAt: l.createdAt,
+    items: JSON.stringify(l.items ?? [])
+  });
+
+  const fetchQuotes = useCallback(
+    async (page: number, append: boolean) => {
+      if (isLoadingQuotes) return;
+      setIsLoadingQuotes(true);
+
+      try {
+        const offset = page * QUOTES_PER_PAGE;
+        const rows = await executeSql<Quote>(
+          'SELECT * FROM quotes ORDER BY date DESC LIMIT ? OFFSET ?',
+          [QUOTES_PER_PAGE, offset]
+        );
+
+        setState(s => ({
+          ...s,
+          quotes: append ? [...s.quotes, ...rows] : rows,
+          currentQuotesPage: page,
+          hasMoreQuotes: rows.length === QUOTES_PER_PAGE
+        }));
+      } finally {
+        setIsLoadingQuotes(false);
+      }
+    },
+    [isLoadingQuotes]
+  );
+
+  const loadNextQuotesPage = () => fetchQuotes(state.currentQuotesPage + 1, true);
+  const refreshQuotes = () => fetchQuotes(0, false);
+
+  /* ============================= */
+  /* ===== CRUD ================= */
+  /* ============================= */
   const updateUser = async (user: User) => {
     await AsyncStorage.setItem('user', JSON.stringify(user));
     setState(s => ({ ...s, user }));
@@ -215,100 +263,181 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setState(s => ({ ...s, darkMode: value }));
   };
 
-  const fetchQuotes = useCallback(async (page: number, append: boolean) => {
-    if (isLoadingQuotes) return;
-    setIsLoadingQuotes(true);
-    try {
-      const offset = page * QUOTES_PER_PAGE;
-      const rows = await executeSql<Quote>(`SELECT * FROM quotes ORDER BY date DESC LIMIT ? OFFSET ?`, [QUOTES_PER_PAGE, offset]);
-      setState(prev => ({
-        ...prev,
-        quotes: append ? [...prev.quotes, ...rows] : rows,
-        currentQuotesPage: page,
-        hasMoreQuotes: rows.length === QUOTES_PER_PAGE
-      }));
-    } finally {
-      setIsLoadingQuotes(false);
-    }
-  }, [isLoadingQuotes]);
+  const addQuote = async (q: Quote) => {
+    await upsert('quotes', q);
+    setState(s => ({ ...s, quotes: [q, ...s.quotes] }));
+  };
 
-  const loadNextQuotesPage = () => fetchQuotes(state.currentQuotesPage + 1, true);
-  const refreshQuotes = () => fetchQuotes(0, false);
+  const updateQuote = async (q: Quote) => {
+    await upsert('quotes', q);
+    setState(s => ({ ...s, quotes: s.quotes.map(x => (x.id === q.id ? q : x)) }));
+  };
 
-  const addQuote = async (q: Quote) => { await upsert('quotes', q); setState(s => ({ ...s, quotes: [q, ...s.quotes] })); };
-  const updateQuote = async (q: Quote) => { await upsert('quotes', q); setState(s => ({ ...s, quotes: s.quotes.map(x => (x.id === q.id ? q : x)) })); };
-  const deleteQuote = async (id: string) => { await executeSql('DELETE FROM quotes WHERE id = ?', [id]); setState(s => ({ ...s, quotes: s.quotes.filter(q => q.id !== id) })); };
+  const deleteQuote = async (id: string) => {
+    await executeSql('DELETE FROM quotes WHERE id = ?', [id]);
+    setState(s => ({ ...s, quotes: s.quotes.filter(q => q.id !== id) }));
+  };
 
-  const addClient = async (c: Client) => { await upsert('clients', c); setState(s => ({ ...s, clients: [c, ...s.clients] })); };
-  const updateClient = async (c: Client) => { await upsert('clients', c); setState(s => ({ ...s, clients: s.clients.map(x => (x.id === c.id ? c : x)) })); };
-  const deleteClient = async (id: string) => { await executeSql('DELETE FROM clients WHERE id = ?', [id]); setState(s => ({ ...s, clients: s.clients.filter(c => c.id !== id) })); };
+  const addClient = async (c: Client) => {
+    await upsert('clients', c);
+    setState(s => ({ ...s, clients: [c, ...s.clients] }));
+  };
 
-  const addService = async (s: Service) => { await upsert('services', s); setState(st => ({ ...st, services: [...st.services, s] })); };
-  const updateService = async (s: Service) => { await upsert('services', s); setState(st => ({ ...st, services: st.services.map(x => (x.id === s.id ? s : x)) })); };
-  const deleteService = async (id: string) => { await executeSql('DELETE FROM services WHERE id = ?', [id]); setState(st => ({ ...st, services: st.services.filter(serv => serv.id !== id) })); };
+  const updateClient = async (c: Client) => {
+    await upsert('clients', c);
+    setState(s => ({ ...s, clients: s.clients.map(x => (x.id === c.id ? c : x)) }));
+  };
 
-  const addCategory = async (c: Category) => { await upsert('categories', c); setState(s => ({ ...s, categories: [...s.categories, c] })); };
+  const deleteClient = async (id: string) => {
+    await executeSql('DELETE FROM clients WHERE id = ?', [id]);
+    setState(s => ({ ...s, clients: s.clients.filter(c => c.id !== id) }));
+  };
+
+  const addService = async (s: Service) => {
+    await upsert('services', s);
+    setState(s => ({ ...s, services: [...s.services, s] }));
+  };
+
+  const updateService = async (s: Service) => {
+    await upsert('services', s);
+    setState(s => ({ ...s, services: s.services.map(x => (x.id === s.id ? s : x)) }));
+  };
+
+  const deleteService = async (id: string) => {
+    await executeSql('DELETE FROM services WHERE id = ?', [id]);
+    setState(s => ({ ...s, services: s.services.filter(x => x.id !== id) }));
+  };
+
+  const addCategory = async (c: Category) => {
+    await upsert('categories', c);
+    setState(s => ({ ...s, categories: [...s.categories, c] }));
+  };
+
   const deleteCategory = async (id: string) => {
-    if (id === 'cat_general') { Alert.alert("Błąd", "Nie można usunąć kategorii systemowej."); return; }
+    if (id === 'cat_general') {
+      Alert.alert('Błąd', 'Nie można usunąć kategorii systemowej.');
+      return;
+    }
+
     await executeSql('DELETE FROM categories WHERE id = ?', [id]);
-    await executeSql('UPDATE services SET categoryId = ? WHERE categoryId = ?', ['cat_general', id]);
+    await executeSql(
+      'UPDATE services SET categoryId = ? WHERE categoryId = ?',
+      ['cat_general', id]
+    );
+
     setState(s => ({
       ...s,
-      categories: s.categories.filter(cat => cat.id !== id),
-      services: s.services.map(serv => serv.categoryId === id ? { ...serv, categoryId: 'cat_general' } : serv)
+      categories: s.categories.filter(c => c.id !== id),
+      services: s.services.map(serv =>
+        serv.categoryId === id ? { ...serv, categoryId: 'cat_general' } : serv
+      )
     }));
   };
 
   const addShoppingList = async (l: ShoppingList) => {
-    const dataToSave = { id: l.id, name: l.name, createdAt: l.createdAt, items: JSON.stringify(l.items) };
-    await upsert('shoppingLists', dataToSave);
-    setState(s => ({ ...s, shoppingLists: [l, ...s.shoppingLists] }));
+    await upsert('shoppingLists', mapListToDb(l));
+    setState(s => ({
+      ...s,
+      shoppingLists: [l, ...s.shoppingLists]
+    }));
   };
 
   const updateShoppingList = async (l: ShoppingList) => {
-    const dataToSave = { id: l.id, name: l.name, createdAt: l.createdAt, items: JSON.stringify(l.items) };
-    await upsert('shoppingLists', dataToSave);
-    setState(s => ({ ...s, shoppingLists: s.shoppingLists.map(x => (x.id === l.id ? l : x)) }));
+    await upsert('shoppingLists', mapListToDb(l));
+    setState(s => ({
+      ...s,
+      shoppingLists: s.shoppingLists.map(x => (x.id === l.id ? l : x))
+    }));
   };
 
   const deleteShoppingList = async (id: string) => {
     await executeSql('DELETE FROM shoppingLists WHERE id = ?', [id]);
-    setState(s => ({ ...s, shoppingLists: s.shoppingLists.filter(l => l.id !== id) }));
+    setState(s => ({
+      ...s,
+      shoppingLists: s.shoppingLists.filter(x => x.id !== id)
+    }));
   };
 
   const retrySubscriptionCheck = async () => {
-    const success = await presentPaywall();
-    if (success) {
-      const status = await checkSubscription();
-      setState(s => ({ ...s, subscriptionStatus: status }));
-    }
+    setState(s => ({ ...s, subscriptionStatus: SubscriptionStatus.NONE }));
   };
 
-  const value = useMemo<AppContextType>(() => ({
-    state, setActiveScreen, updateUser, toggleDarkMode, loadNextQuotesPage, refreshQuotes,
-    addQuote, updateQuote, deleteQuote, addClient, updateClient, deleteClient,
-    addService, updateService, deleteService, addCategory, deleteCategory,
-    retrySubscriptionCheck, addShoppingList, updateShoppingList, deleteShoppingList
-  }), [state, fetchQuotes, checkSubscription, setActiveScreen]);
+  const value = useMemo<AppContextType>(
+    () => ({
+      state,
+      setActiveScreen,
+      updateUser,
+      toggleDarkMode,
+      loadNextQuotesPage,
+      refreshQuotes,
+      addQuote,
+      updateQuote,
+      deleteQuote,
+      addClient,
+      updateClient,
+      deleteClient,
+      addService,
+      updateService,
+      deleteService,
+      addCategory,
+      deleteCategory,
+      addShoppingList,
+      updateShoppingList,
+      deleteShoppingList,
+      retrySubscriptionCheck
+    }),
+    [state]
+  );
 
-  if (!isReady) {
+
+
+  /* ============================= */
+  /* ===== RENDER =============== */
+  /* ============================= */
+  if (!isReady || state.subscriptionStatus === SubscriptionStatus.CHECKING) {
     return (
-      <View style={[styles.loader, { backgroundColor: state.darkMode ? '#020617' : '#fff' }]}>
+      <View style={styles.loader}>
         <ActivityIndicator size="large" color="#2563eb" />
-        <Text style={{ marginTop: 15, fontWeight: '600', color: state.darkMode ? '#94a3b8' : '#64748b' }}>Inicjalizacja systemu...</Text>
+        <Text style={styles.text}>Inicjalizacja systemu…</Text>
       </View>
+    );
+  }
+
+  if (state.subscriptionStatus !== SubscriptionStatus.ACTIVE) {
+    return (
+      <PaywallScreen
+        onSuccess={async () => {
+          const status = await checkSubscription();
+          setState(s => ({ ...s, subscriptionStatus: status }));
+        }}
+      />
     );
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
 
+/* ============================= */
+/* ===== HOOK ================== */
+/* ============================= */
 export const useAppContext = () => {
   const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useAppContext must be inside AppProvider');
+  if (!ctx) {
+    throw new Error('useAppContext must be used inside AppProvider');
+  }
   return ctx;
 };
 
 const styles = StyleSheet.create({
-  loader: { flex: 1, justifyContent: 'center', alignItems: 'center' }
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#020617'
+  },
+  text: {
+    marginTop: 15,
+    color: '#94a3b8',
+    fontWeight: '600'
+  }
 });
