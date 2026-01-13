@@ -10,28 +10,36 @@ const PaywallScreen = ({ onSuccess }: Props) => {
   const [isLoading, setIsLoading] = useState(true);
   const [paywallFailed, setPaywallFailed] = useState(false);
 
-  useEffect(() => {
+useEffect(() => {
     let mounted = true;
 
+    // 👇 ZMIANA: Wywalamy próbę połączenia, od razu pokazujemy przycisk "Skip"
+    (async () => {
+      // Symulujemy małe opóźnienie (opcjonalne)
+      // await new Promise(resolve => setTimeout(resolve, 500));
+      
+      if (mounted) {
+        console.log("Paywall bypass: Wymuszamy tryb awaryjny");
+        setPaywallFailed(true); // <--- To pokaże przycisk "Kontynuuj w trybie deweloperskim"
+        setIsLoading(false);    // <--- To schowa kółko ładowania
+      }
+    })();
+
+    /* 
+    ❌ STARY KOD (ZAKOMENTOWANY), KTÓRY WYWALAŁ APKĘ:
     (async () => {
       try {
         setIsLoading(true);
-        const success = await presentPaywall();
+        const success = await presentPaywall(); // <--- TO ZABIJAŁO APKĘ
         if (success && mounted) {
           onSuccess();
         } else if (mounted) {
-          // Paywall nie zadziałał (np. w Expo Go Preview Mode)
           setPaywallFailed(true);
           setIsLoading(false);
         }
-      } catch (error) {
-        console.error('Paywall error:', error);
-        if (mounted) {
-          setPaywallFailed(true);
-          setIsLoading(false);
-        }
-      }
+      } catch (error) { ... }
     })();
+    */
 
     return () => {
       mounted = false;
