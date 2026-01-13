@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import { presentPaywall } from '../utils/paywall';
+import { View, ActivityIndicator, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
+
+// ❌ USUNĘLIŚMY IMPORT 'presentPaywall'. TERAZ JEST CZYSTO.
 
 type Props = {
   onSuccess: () => void;
@@ -8,88 +9,47 @@ type Props = {
 
 const PaywallScreen = ({ onSuccess }: Props) => {
   const [isLoading, setIsLoading] = useState(true);
-  const [paywallFailed, setPaywallFailed] = useState(false);
 
-useEffect(() => {
-    let mounted = true;
+  useEffect(() => {
+    // Symulujemy chwilę "myślenia", żeby nie mignęło za szybko
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 500);
 
-    // 👇 ZMIANA: Wywalamy próbę połączenia, od razu pokazujemy przycisk "Skip"
-    (async () => {
-      // Symulujemy małe opóźnienie (opcjonalne)
-      // await new Promise(resolve => setTimeout(resolve, 500));
-      
-      if (mounted) {
-        console.log("Paywall bypass: Wymuszamy tryb awaryjny");
-        setPaywallFailed(true); // <--- To pokaże przycisk "Kontynuuj w trybie deweloperskim"
-        setIsLoading(false);    // <--- To schowa kółko ładowania
-      }
-    })();
-
-    /* 
-    ❌ STARY KOD (ZAKOMENTOWANY), KTÓRY WYWALAŁ APKĘ:
-    (async () => {
-      try {
-        setIsLoading(true);
-        const success = await presentPaywall(); // <--- TO ZABIJAŁO APKĘ
-        if (success && mounted) {
-          onSuccess();
-        } else if (mounted) {
-          setPaywallFailed(true);
-          setIsLoading(false);
-        }
-      } catch (error) { ... }
-    })();
-    */
-
-    return () => {
-      mounted = false;
-    };
+    return () => clearTimeout(timer);
   }, []);
 
   const handleSkip = () => {
-    Alert.alert(
-      'Tryb deweloperski',
-      'Pomijasz paywall. W produkcji wymagana będzie aktywna subskrypcja.',
-      [
-        { text: 'Anuluj', style: 'cancel' },
-        { 
-          text: 'Kontynuuj', 
-          onPress: () => onSuccess(),
-          style: 'default'
-        }
-      ]
-    );
+    // Od razu wpuszczamy do aplikacji
+    onSuccess();
   };
 
   if (isLoading) {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color="#2563eb" />
-        <Text style={styles.text}>Sprawdzanie subskrypcji…</Text>
+        <Text style={styles.text}>Ładowanie systemu...</Text>
       </View>
     );
   }
 
-  // Fallback gdy paywall nie działa (np. Expo Go)
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>Wymagana subskrypcja</Text>
+        <Text style={{ fontSize: 50, marginBottom: 20 }}>🛠️</Text>
+        <Text style={styles.title}>Tryb Deweloperski</Text>
         <Text style={styles.message}>
-          Aby korzystać z aplikacji, potrzebujesz aktywnej subskrypcji.
-        </Text>
-        <Text style={styles.devNote}>
-          (W trybie deweloperskim możesz pominąć ten ekran)
+          Moduł płatności został tymczasowo odłączony, aby umożliwić testowanie bez konfiguracji Google Play.
         </Text>
         
         <TouchableOpacity 
           style={styles.button} 
           onPress={handleSkip}
         >
-          <Text style={styles.buttonText}>Kontynuuj w trybie deweloperskim</Text>
+          <Text style={styles.buttonText}>Wejdź do aplikacji</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -105,6 +65,7 @@ const styles = StyleSheet.create({
   },
   content: {
     alignItems: 'center',
+    width: '100%',
     maxWidth: 400
   },
   text: {
@@ -123,25 +84,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#94a3b8',
     textAlign: 'center',
-    marginBottom: 8
-  },
-  devNote: {
-    fontSize: 12,
-    color: '#64748b',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginBottom: 24
+    marginBottom: 30,
+    lineHeight: 24
   },
   button: {
     backgroundColor: '#2563eb',
-    paddingHorizontal: 24,
-    paddingVertical: 14,
+    width: '100%',
+    paddingVertical: 16,
     borderRadius: 12,
-    marginTop: 8
+    alignItems: 'center'
   },
   buttonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700'
   }
 });
