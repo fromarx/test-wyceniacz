@@ -1,20 +1,24 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, Modal, Alert, Platform, KeyboardAvoidingView
+  StyleSheet, Modal, Alert, Platform, KeyboardAvoidingView, Animated
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppContext } from '../store/AppContext';
 import {
   Plus, Search, ChevronRight, X, Ruler, Package, Check,
-  ChevronLeft, Trash2, Box, UserPlus, Briefcase, FileText, Settings2
+  ChevronLeft, Trash2, Box, UserPlus, Briefcase, FileText, Settings2,
+  Calendar
 } from 'lucide-react-native';
 import {
   Quote, QuoteItem, QuoteStatus, Service, UnitOfMeasure,
   MaterialMode, Client, MaterialItem
 } from '../types';
 import { PdfGenerator } from '../utils/PdfServiceMobile';
+import { useToast } from '../components/Toast';
+import { getThemeColors, getShadows } from '../utils/theme';
 
 type RootStackParamList = {
   NewQuote: { id?: string };
@@ -30,6 +34,10 @@ const NewQuote: React.FC = () => {
 
   const { state, addQuote, updateQuote, addClient, setActiveScreen } = useAppContext();
   const { darkMode, clients, services, user } = state;
+  const colors = getThemeColors(darkMode);
+  const shadows = getShadows(darkMode);
+  const { showToast } = useToast();
+  const styles = getStyles(colors);
 
   const isEditMode = !!id;
   const [step, setStep] = useState(1);
@@ -44,6 +52,8 @@ const NewQuote: React.FC = () => {
   });
 
   const [selectedItems, setSelectedItems] = useState<QuoteItem[]>([]);
+  const [estimatedDate, setEstimatedDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const [customService, setCustomService] = useState<Partial<QuoteItem>>({
     name: '', netPrice: 0, quantity: 1, unit: 'm2', vatRate: 8,
@@ -54,7 +64,30 @@ const NewQuote: React.FC = () => {
     name: '', price: 0, consumption: 1, unit: 'szt'
   });
 
-  useEffect(() => { setActiveScreen('Nowa wycena'); }, []);
+  useEffect(() => {
+    setActiveScreen('Nowa wycena');
+    if (isEditMode && id) {
+      const q = state.quotes.find(x => x.id === id);
+      if (q) {
+        setClientInfo({
+          clientId: q.clientId || '',
+          firstName: q.clientFirstName,
+          lastName: q.clientLastName,
+          phone: q.clientPhone,
+          email: q.clientEmail,
+          clientCompany: q.clientCompany,
+          clientNip: q.clientNip || '',
+          serviceStreet: q.serviceStreet,
+          serviceHouseNo: q.serviceHouseNo,
+          serviceApartmentNo: q.serviceApartmentNo || '',
+          servicePostalCode: q.servicePostalCode,
+          serviceCity: q.serviceCity
+        });
+        setEstimatedDate(q.estimatedCompletionDate || '');
+        setSelectedItems(q.items);
+      }
+    }
+  }, [id, isEditMode, state.quotes]);
 
   // --- LOGIKA KLIENTA ---
   const handleSelectClient = (c: Client) => {
@@ -65,10 +98,14 @@ const NewQuote: React.FC = () => {
       servicePostalCode: c.postalCode, serviceCity: c.city
     });
     setShowClientPicker(false);
+    showToast('Dane klienta wczytane', 'info');
   };
 
   const saveClientToDb = async () => {
-    if (!clientInfo.firstName || !clientInfo.phone) return Alert.alert("Błąd", "Imię i telefon są wymagane.");
+    if (!clientInfo.firstName || !clientInfo.phone) {
+      showToast("Imię i telefon są wymagane", "error");
+      return;
+    }
     const newClient: Client = {
       id: `cli_${Date.now()}`, firstName: clientInfo.firstName, lastName: clientInfo.lastName,
       phone: clientInfo.phone, email: clientInfo.email, companyName: clientInfo.clientCompany,
@@ -77,7 +114,7 @@ const NewQuote: React.FC = () => {
     };
     await addClient(newClient);
     setClientInfo(prev => ({ ...prev, clientId: newClient.id }));
-    Alert.alert("Sukces", "Klient zapisany w bazie.");
+    showToast("Klient zapisany w bazie", "success");
   };
 
   // --- LOGIKA USŁUG I MATERIAŁÓW ---
@@ -89,6 +126,7 @@ const NewQuote: React.FC = () => {
     };
     setCustomService(prev => ({ ...prev, materials: [...(prev.materials || []), newItem] }));
     setTempMaterial({ name: '', price: 0, consumption: 1, unit: 'szt' });
+    showToast('Dodano materiał', 'success', 1000);
   };
 
   const addServiceToQuote = (s?: Service) => {
@@ -105,9 +143,9 @@ const NewQuote: React.FC = () => {
     setSelectedItems([...selectedItems, newItem]);
     if (!s) {
       setCustomService({ name: '', netPrice: 0, quantity: 1, unit: 'm2', vatRate: 8, materialMode: 'estimated', estimatedMaterialPrice: 0, materials: [] });
-      Alert.alert("Dodano", "Usługa została dodana do wyceny.");
+      showToast("Usługa dodana do wyceny", "success");
     } else {
-      Alert.alert("Dodano", `Usługa "${s.name}" została dodana.`);
+      showToast(`Dodano: ${s.name}`, "success");
     }
   };
 
@@ -129,6 +167,27 @@ const NewQuote: React.FC = () => {
       const res = calculateItemTotal(item);
       return { net: acc.net + res.net, vat: acc.vat + res.vat, gross: acc.gross + res.gross };
     }, { net: 0, vat: 0, gross: 0 });
+  };
+
+  const parseDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    const parts = dateStr.split('.');
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+      if (!isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    // Na Androidzie zmiana daty od razu zamyka picker
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    
+    if (selectedDate) {
+      setEstimatedDate(selectedDate.toLocaleDateString('pl-PL'));
+    }
   };
 
   const handleFinalSave = async () => {
@@ -155,6 +214,7 @@ const NewQuote: React.FC = () => {
       clientCompany: clientInfo.clientCompany, serviceStreet: clientInfo.serviceStreet,
       serviceHouseNo: clientInfo.serviceHouseNo, serviceApartmentNo: clientInfo.serviceApartmentNo,
       servicePostalCode: clientInfo.servicePostalCode, serviceCity: clientInfo.serviceCity,
+      estimatedCompletionDate: estimatedDate,
       items: selectedItems, totalNet: totals.net, totalVat: totals.vat, totalGross: totals.gross
     };
 
@@ -165,74 +225,123 @@ const NewQuote: React.FC = () => {
         await addQuote(quoteData);
       }
 
-// screens/NewQuote.tsx (wewnątrz funkcji handleFinalSave, okolice linii 167-180)
-
-Alert.alert(
-  'Zapisano pomyślnie', 
-  'Wycena została zapisana. Czy chcesz teraz wygenerować i wysłać PDF?',
-  [
-    { 
-      text: 'Tylko zapisz', 
-      // ZMIANA PONIŻEJ:
-      onPress: () => navigation.navigate('MainTabs', { screen: 'Quotes' }) 
-    },
-    { 
-      text: 'Zapisz i wyślij PDF', 
-      onPress: async () => {
-        await PdfGenerator.download(quoteData, user);
-        // ZMIANA PONIŻEJ:
-        navigation.navigate('MainTabs', { screen: 'Quotes' });
-      } 
-    }
-  ]
-);
+      Alert.alert(
+        'Zapisano pomyślnie', 
+        'Wycena została zapisana. Czy chcesz teraz wygenerować i wysłać PDF?',
+        [
+          { 
+            text: 'Tylko zapisz', 
+            onPress: () => navigation.navigate('MainTabs', { screen: 'Quotes' }) 
+          },
+          { 
+            text: 'Zapisz i wyślij PDF', 
+            onPress: async () => {
+              await PdfGenerator.download(quoteData, user);
+              navigation.navigate('MainTabs', { screen: 'Quotes' });
+            } 
+          }
+        ]
+      );
     } catch (error) {
       console.error('Save quote error:', error);
-      Alert.alert('Błąd', 'Nie udało się zapisać wyceny w bazie.');
+      showToast('Błąd zapisu wyceny', 'error');
     }
   };
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-      <View style={[styles.container, { backgroundColor: darkMode ? '#020617' : '#f8fafc' }]}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
 
         {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : navigation.goBack()}>
-            <ChevronLeft color={darkMode ? '#e2e8f0' : '#64748b'} size={28} />
+            <ChevronLeft color={colors.textSecondary} size={28} />
           </TouchableOpacity>
           <View style={styles.stepIndicator}>
             {[1, 2, 3].map(s => (
-              <View key={s} style={[styles.stepDot, step >= s && styles.stepDotActive]} />
+              <View 
+                key={s} 
+                style={[
+                  styles.stepDot, 
+                  { backgroundColor: step >= s ? colors.accent : colors.borderStrong },
+                  step >= s && { width: 24 }
+                ]} 
+              />
             ))}
           </View>
           <View style={{ width: 28 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
           {/* KROK 1: KLIENT */}
           {step === 1 && (
             <View style={styles.stepContainer}>
               <View style={styles.rowBetween}>
-                <Text style={[styles.sectionTitle, { color: darkMode ? '#f1f5f9' : '#1e293b' }]}>Zleceniodawca</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Zleceniodawca</Text>
                 <TouchableOpacity onPress={() => setShowClientPicker(true)} style={styles.linkBtn}>
-                  <Search size={16} color="#2563eb" />
-                  <Text style={styles.linkBtnText}>Baza klientów</Text>
+                  <Search size={16} color={colors.accent} />
+                  <Text style={[styles.linkBtnText, { color: colors.accent }]}>Baza klientów</Text>
                 </TouchableOpacity>
               </View>
 
-              <View style={[styles.card, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}>
-                <CustomInput label="Imię*" value={clientInfo.firstName} onChangeText={(v:any) => setClientInfo({...clientInfo, firstName: v})} darkMode={darkMode} />
-                <CustomInput label="Nazwisko*" value={clientInfo.lastName} onChangeText={(v:any) => setClientInfo({...clientInfo, lastName: v})} darkMode={darkMode} />
-                <CustomInput label="Telefon*" value={clientInfo.phone} onChangeText={(v:any) => setClientInfo({...clientInfo, phone: v})} darkMode={darkMode} keyboardType="phone-pad" />
-                <CustomInput label="Email (do wysyłki PDF)" value={clientInfo.email} onChangeText={(v:any) => setClientInfo({...clientInfo, email: v})} darkMode={darkMode} keyboardType="email-address" autoCapitalize="none" />
-                <CustomInput label="Miejscowość*" value={clientInfo.serviceCity} onChangeText={(v:any) => setClientInfo({...clientInfo, serviceCity: v})} darkMode={darkMode} />
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, ...shadows.sm }]}>
+                <CustomInput label="Imię*" value={clientInfo.firstName} onChangeText={(v:any) => setClientInfo({...clientInfo, firstName: v})} colors={colors} styles={styles} />
+                <CustomInput label="Nazwisko*" value={clientInfo.lastName} onChangeText={(v:any) => setClientInfo({...clientInfo, lastName: v})} colors={colors} styles={styles} />
+                <CustomInput label="Telefon*" value={clientInfo.phone} onChangeText={(v:any) => setClientInfo({...clientInfo, phone: v})} colors={colors} styles={styles} keyboardType="phone-pad" />
+                <CustomInput label="Email (do wysyłki PDF)" value={clientInfo.email} onChangeText={(v:any) => setClientInfo({...clientInfo, email: v})} colors={colors} styles={styles} keyboardType="email-address" autoCapitalize="none" />
+                <CustomInput label="Miejscowość*" value={clientInfo.serviceCity} onChangeText={(v:any) => setClientInfo({...clientInfo, serviceCity: v})} colors={colors} styles={styles} />
+
+                <View style={styles.inputWrapper}>
+                  <Text style={[styles.label, { color: colors.textSecondary }]}>Szacowany termin realizacji</Text>
+                  <TouchableOpacity 
+                    onPress={() => setShowDatePicker(true)}
+                    style={[styles.row, { borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 10 }]}
+                  >
+                    <Calendar size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
+                    <Text style={{ color: estimatedDate ? colors.text : colors.textMuted, fontSize: 16 }}>
+                      {estimatedDate || "Wybierz datę..."}
+                    </Text>
+                  </TouchableOpacity>
+                  {showDatePicker && Platform.OS === 'ios' && (
+                    <Modal transparent animationType="fade" visible={showDatePicker}>
+                      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }}>
+                        <View style={{ backgroundColor: colors.surface, borderRadius: 24, padding: 20 }}>
+                          <DateTimePicker
+                            value={parseDate(estimatedDate)}
+                            mode="date"
+                            display="spinner"
+                            onChange={onDateChange}
+                            textColor={colors.text}
+                          />
+                          <TouchableOpacity 
+                            onPress={() => setShowDatePicker(false)}
+                            style={{ backgroundColor: colors.accent, padding: 15, borderRadius: 15, alignItems: 'center', marginTop: 10 }}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: 'bold' }}>ZATWIERDŹ</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </Modal>
+                  )}
+
+                  {showDatePicker && Platform.OS === 'android' && (
+                    <DateTimePicker
+                      value={parseDate(estimatedDate)}
+                      mode="date"
+                      display="default"
+                      onChange={onDateChange}
+                    />
+                  )}
+                </View>
 
                 {!clientInfo.clientId && clientInfo.firstName && (
-                  <TouchableOpacity style={styles.outlineAction} onPress={saveClientToDb}>
-                    <UserPlus size={18} color="#2563eb" />
-                    <Text style={styles.outlineActionText}>Zapisz w bazie na stałe</Text>
+                  <TouchableOpacity 
+                    style={[styles.outlineAction, { borderColor: colors.accent }]} 
+                    onPress={saveClientToDb}
+                  >
+                    <UserPlus size={18} color={colors.accent} />
+                    <Text style={[styles.outlineActionText, { color: colors.accent }]}>Zapisz w bazie na stałe</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -242,96 +351,112 @@ Alert.alert(
           {/* KROK 2: USŁUGI */}
           {step === 2 && (
             <View style={styles.stepContainer}>
-              <Text style={[styles.sectionTitle, { color: darkMode ? '#f1f5f9' : '#1e293b' }]}>Usługi i Materiały</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Usługi i Materiały</Text>
 
-              <View style={[styles.card, { backgroundColor: darkMode ? '#0f172a' : '#eff6ff', borderColor: darkMode ? '#3b82f6' : '#3b82f6' }]}>
-                <Text style={styles.cardLabel}>DODAJ USŁUGĘ "Z RĘKI"</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, ...shadows.sm }]}>
+                <Text style={[styles.cardLabel, { color: colors.accent }]}>DODAJ USŁUGĘ "Z RĘKI"</Text>
                 <TextInput 
                   placeholder="Nazwa usługi..." 
-                  placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
-                  style={[styles.simpleInput, { backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                  placeholderTextColor={colors.textMuted}
+                  style={[styles.simpleInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
                   value={customService.name} 
                   onChangeText={v => setCustomService({...customService, name: v})} 
                 />
                 <View style={styles.row}>
                   <TextInput 
                     placeholder="Cena netto" 
-                    placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
-                    style={[styles.simpleInput, { flex: 2, marginRight: 10, backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.simpleInput, { flex: 2, marginRight: 10, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
                     keyboardType="numeric" 
                     onChangeText={v => setCustomService({...customService, netPrice: Number(v)})} 
                   />
                   <TextInput 
                     placeholder="jm" 
-                    placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
-                    style={[styles.simpleInput, { flex: 1, backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.simpleInput, { flex: 1, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
                     value={customService.unit} 
                     onChangeText={v => setCustomService({...customService, unit: v as any})} 
                   />
                 </View>
 
                 <View style={styles.modeToggle}>
-                  <TouchableOpacity onPress={() => setCustomService({...customService, materialMode: 'estimated'})} style={[styles.modeBtn, customService.materialMode === 'estimated' && styles.modeBtnActive]}>
-                    <Text style={styles.modeBtnText}>RYCZAŁT MAT.</Text>
+                  <TouchableOpacity 
+                    onPress={() => setCustomService({...customService, materialMode: 'estimated'})} 
+                    style={[
+                      styles.modeBtn, 
+                      customService.materialMode === 'estimated' ? { backgroundColor: colors.accent } : { backgroundColor: colors.border }
+                    ]}
+                  >
+                    <Text style={[styles.modeBtnText, { color: customService.materialMode === 'estimated' ? '#fff' : colors.textSecondary }]}>RYCZAŁT MAT.</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => setCustomService({...customService, materialMode: 'detailed'})} style={[styles.modeBtn, customService.materialMode === 'detailed' && styles.modeBtnActive]}>
-                    <Text style={styles.modeBtnText}>LISTA MAT.</Text>
+                  <TouchableOpacity 
+                    onPress={() => setCustomService({...customService, materialMode: 'detailed'})} 
+                    style={[
+                      styles.modeBtn, 
+                      customService.materialMode === 'detailed' ? { backgroundColor: colors.accent } : { backgroundColor: colors.border }
+                    ]}
+                  >
+                    <Text style={[styles.modeBtnText, { color: customService.materialMode === 'detailed' ? '#fff' : colors.textSecondary }]}>LISTA MAT.</Text>
                   </TouchableOpacity>
                 </View>
 
                 {customService.materialMode === 'estimated' ? (
                   <TextInput 
                     placeholder="Cena materiału na jm" 
-                    placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
-                    style={[styles.simpleInput, { backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.simpleInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
                     keyboardType="numeric" 
                     onChangeText={v => setCustomService({...customService, estimatedMaterialPrice: Number(v)})} 
                   />
                 ) : (
-                  <View style={[styles.innerCard, { backgroundColor: darkMode ? '#1e293b' : '#f1f5f9' }]}>
+                  <View style={[styles.innerCard, { backgroundColor: colors.surfaceSubtle }]}>
                     <TextInput 
                       placeholder="Nazwa materiału" 
-                      placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
-                      style={[styles.simpleInput, { backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                      placeholderTextColor={colors.textMuted}
+                      style={[styles.simpleInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
                       value={tempMaterial.name} 
                       onChangeText={v => setTempMaterial({...tempMaterial, name: v})} 
                     />
                     <View style={styles.row}>
                       <TextInput 
                         placeholder="Cena" 
-                        placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
-                        style={[styles.simpleInput, { flex: 1, marginRight: 5, backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                        placeholderTextColor={colors.textMuted}
+                        style={[styles.simpleInput, { flex: 1, marginRight: 5, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
                         keyboardType="numeric" 
                         value={tempMaterial.price?.toString()} 
                         onChangeText={v => setTempMaterial({...tempMaterial, price: Number(v)})} 
                       />
                       <TextInput 
                         placeholder="Zużycie/jm" 
-                        placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
-                        style={[styles.simpleInput, { flex: 1, backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                        placeholderTextColor={colors.textMuted}
+                        style={[styles.simpleInput, { flex: 1, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
                         keyboardType="numeric" 
                         value={tempMaterial.consumption?.toString()} 
                         onChangeText={v => setTempMaterial({...tempMaterial, consumption: Number(v)})} 
                       />
                     </View>
-                    <TouchableOpacity style={styles.addMatBtn} onPress={addMaterialToCustom}>
+                    <TouchableOpacity style={[styles.addMatBtn, { backgroundColor: colors.textSecondary }]} onPress={addMaterialToCustom}>
                       <Plus size={14} color="#fff" />
                       <Text style={styles.addMatBtnText}>DODAJ MATERIAŁ</Text>
                     </TouchableOpacity>
-                    {customService.materials?.map(m => <Text key={m.id} style={[styles.matListText, { color: darkMode ? '#94a3b8' : '#475569' }]}>• {m.name} ({m.price}zł x {m.consumption})</Text>)}
+                    {customService.materials?.map(m => <Text key={m.id} style={[styles.matListText, { color: colors.textSecondary }]}>• {m.name} ({m.price}zł x {m.consumption})</Text>)}
                   </View>
                 )}
 
-                <TouchableOpacity style={styles.addServiceBtn} onPress={() => addServiceToQuote()}>
+                <TouchableOpacity style={[styles.addServiceBtn, { backgroundColor: colors.accent }]} onPress={() => addServiceToQuote()}>
                   <Text style={styles.addServiceBtnText}>DODAJ DO WYCENY</Text>
                 </TouchableOpacity>
               </View>
 
-              <Text style={[styles.cardLabel, { marginTop: 10 }]}>LUB WYBIERZ Z KATALOGU</Text>
+              <Text style={[styles.cardLabel, { marginTop: 10, color: colors.textMuted }]}>LUB WYBIERZ Z KATALOGU</Text>
               {services.map(s => (
-                <TouchableOpacity key={s.id} onPress={() => addServiceToQuote(s)} style={[styles.serviceItem, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}>
-                  <Text style={{ color: darkMode ? '#cbd5e1' : '#334155', flex: 1, fontWeight: 'bold' }}>{s.name}</Text>
-                  <Plus size={20} color="#2563eb" />
+                <TouchableOpacity 
+                  key={s.id} 
+                  onPress={() => addServiceToQuote(s)} 
+                  style={[styles.serviceItem, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                >
+                  <Text style={{ color: colors.text, flex: 1, fontWeight: '700' }}>{s.name}</Text>
+                  <Plus size={20} color={colors.accent} />
                 </TouchableOpacity>
               ))}
             </View>
@@ -340,23 +465,23 @@ Alert.alert(
           {/* KROK 3: PODSUMOWANIE */}
           {step === 3 && (
             <View style={styles.stepContainer}>
-              <Text style={[styles.sectionTitle, { color: darkMode ? '#f1f5f9' : '#1e293b' }]}>Podsumowanie</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Podsumowanie</Text>
 
               {selectedItems.map((item, idx) => {
                 const res = calculateItemTotal(item);
                 return (
-                  <View key={item.id} style={[styles.summaryItem, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}>
+                  <View key={item.id} style={[styles.summaryItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={styles.rowBetween}>
-                      <Text style={[styles.sumName, { color: darkMode ? '#f1f5f9' : '#000' }]}>{idx+1}. {item.name}</Text>
+                      <Text style={[styles.sumName, { color: colors.text }]}>{idx+1}. {item.name}</Text>
                       <TouchableOpacity onPress={() => setSelectedItems(selectedItems.filter(i => i.id !== item.id))}>
-                        <Trash2 size={18} color="#ef4444" />
+                        <Trash2 size={18} color={colors.danger} />
                       </TouchableOpacity>
                     </View>
 
                     <View style={styles.sumDetailRow}>
-                      <Text style={[styles.sumLabel, { color: darkMode ? '#94a3b8' : '#64748b' }]}>Ilość (metraż):</Text>
+                      <Text style={[styles.sumLabel, { color: colors.textSecondary }]}>Ilość (metraż):</Text>
                       <TextInput
-                        style={[styles.sumInput, { color: darkMode ? '#fff' : '#000', borderBottomColor: '#2563eb' }]}
+                        style={[styles.sumInput, { color: colors.text, borderBottomColor: colors.accent }]}
                         keyboardType="numeric"
                         value={item.quantity.toString()}
                         onChangeText={v => {
@@ -365,21 +490,21 @@ Alert.alert(
                           setSelectedItems(newItems);
                         }}
                       />
-                      <Text style={[styles.sumLabel, { color: darkMode ? '#94a3b8' : '#64748b' }]}>{item.unit}</Text>
+                      <Text style={[styles.sumLabel, { color: colors.textSecondary }]}>{item.unit}</Text>
                     </View>
 
-                    <View style={styles.sumInfoRow}>
-                      <Text style={styles.sumSubLabel}>Robocizna: {item.netPrice * item.quantity} zł</Text>
-                      <Text style={styles.sumSubLabel}>Materiał: {res.net - (item.netPrice * item.quantity)} zł</Text>
+                    <View style={[styles.sumInfoRow, { borderTopColor: colors.border }]}>
+                      <Text style={[styles.sumSubLabel, { color: colors.textMuted }]}>Robocizna: {item.netPrice * item.quantity} zł</Text>
+                      <Text style={[styles.sumSubLabel, { color: colors.textMuted }]}>Materiał: {res.net - (item.netPrice * item.quantity)} zł</Text>
                     </View>
-                    <Text style={styles.sumTotal}>Suma pozycji: {res.gross.toFixed(2)} zł</Text>
+                    <Text style={[styles.sumTotal, { color: colors.accent }]}>Suma pozycji: {res.gross.toFixed(2)} zł</Text>
                   </View>
                 );
               })}
 
-              <View style={[styles.totalBox, { backgroundColor: darkMode ? '#0f172a' : '#1e293b' }]}>
+              <View style={[styles.totalBox, { backgroundColor: colors.primary }]}>
                 <Text style={styles.totalLabel}>ŁĄCZNIE DO ZAPŁATY (BRUTTO)</Text>
-                <Text style={styles.totalValue}>{getFinalTotals().gross.toLocaleString()} zł</Text>
+                <Text style={[styles.totalValue, { color: colors.textInverted }]}>{getFinalTotals().gross.toLocaleString()} zł</Text>
               </View>
             </View>
           )}
@@ -387,26 +512,29 @@ Alert.alert(
         </ScrollView>
 
         {/* STOPKA NAWIGACJI */}
-        <View style={[styles.footer, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderTopColor: darkMode ? '#1e293b' : '#e2e8f0', borderTopWidth: 1 }]}>
+        <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1 }]}>
           {step > 1 && (
-             <TouchableOpacity style={[styles.navBtn, styles.navBtnBack, { backgroundColor: darkMode ? '#1e293b' : '#f1f5f9' }]} onPress={() => setStep(step - 1)}>
-              <ChevronLeft color={darkMode ? '#cbd5e1' : '#64748b'} />
-              <Text style={[styles.navBtnBackText, { color: darkMode ? '#cbd5e1' : '#64748b' }]}>WSTECZ</Text>
+             <TouchableOpacity 
+              style={[styles.navBtn, styles.navBtnBack, { backgroundColor: colors.surfaceSubtle }]} 
+              onPress={() => setStep(step - 1)}
+            >
+              <ChevronLeft color={colors.textSecondary} />
+              <Text style={[styles.navBtnBackText, { color: colors.textSecondary }]}>WSTECZ</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
-            style={[styles.navBtn, styles.navBtnNext, step === 3 && { backgroundColor: '#10b981' }]}
+            style={[styles.navBtn, styles.navBtnNext, { backgroundColor: step === 3 ? colors.success : colors.accent }]}
             onPress={() => {
                 if (step === 1) {
                     if (!clientInfo.firstName || !clientInfo.phone || !clientInfo.serviceCity) {
-                        Alert.alert('Błąd', 'Uzupełnij wymagane pola klienta.');
+                        showToast('Uzupełnij wymagane pola klienta', 'error');
                         return;
                     }
                     setStep(2);
                 } else if (step === 2) {
                     if (selectedItems.length === 0) {
-                        Alert.alert('Błąd', 'Dodaj przynajmniej jedną usługę.');
+                        showToast('Dodaj przynajmniej jedną usługę', 'error');
                         return;
                     }
                     setStep(3);
@@ -422,18 +550,18 @@ Alert.alert(
 
         {/* MODAL KLIENTA */}
         <Modal visible={showClientPicker} animationType="slide">
-          <View style={[styles.modalContent, { backgroundColor: darkMode ? '#020617' : '#fff' }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#000' }]}>Wybierz klienta</Text>
-              <TouchableOpacity onPress={() => setShowClientPicker(false)}><X size={24} color={darkMode ? '#fff' : '#000'} /></TouchableOpacity>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Wybierz klienta</Text>
+              <TouchableOpacity onPress={() => setShowClientPicker(false)}><X size={24} color={colors.text} /></TouchableOpacity>
             </View>
             <ScrollView>
               {clients.map(c => (
-                <TouchableOpacity key={c.id} style={[styles.clientPickerItem, { borderBottomColor: darkMode ? '#1e293b' : '#f1f5f9' }]} onPress={() => handleSelectClient(c)}>
-                  <Briefcase size={20} color="#64748b" />
+                <TouchableOpacity key={c.id} style={[styles.clientPickerItem, { borderBottomColor: colors.border }]} onPress={() => handleSelectClient(c)}>
+                  <Briefcase size={20} color={colors.textMuted} />
                   <View style={{ marginLeft: 12 }}>
-                    <Text style={{ fontWeight: 'bold', color: darkMode ? '#fff' : '#000' }}>{c.firstName} {c.lastName}</Text>
-                    <Text style={{ color: '#64748b', fontSize: 12 }}>{c.city}, {c.phone}</Text>
+                    <Text style={{ fontWeight: 'bold', color: colors.text }}>{c.firstName} {c.lastName}</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{c.city}, {c.phone}</Text>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -445,43 +573,43 @@ Alert.alert(
   );
 };
 
-const CustomInput = ({ label, darkMode, ...props }: any) => (
+const CustomInput = ({ label, colors, styles, ...props }: any) => (
   <View style={styles.inputWrapper}>
-    <Text style={[styles.label, { color: darkMode ? '#94a3b8' : '#94a3b8' }]}>{label}</Text>
+    <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
     <TextInput 
-      style={[styles.input, { color: darkMode ? '#fff' : '#000', borderBottomColor: darkMode ? '#1e293b' : '#e2e8f0' }]} 
-      placeholderTextColor={darkMode ? '#475569' : '#cbd5e1'}
+      style={[styles.input, { color: colors.text, borderBottomColor: colors.border }]} 
+      placeholderTextColor={colors.textMuted}
       {...props} 
     />
   </View>
 );
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, paddingTop: Platform.OS === 'ios' ? 40 : 16 },
   stepIndicator: { flexDirection: 'row', gap: 8 },
-  stepDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#e2e8f0' },
-  stepDotActive: { backgroundColor: '#2563eb', width: 20 },
+  stepDot: { width: 8, height: 8, borderRadius: 4 },
+  stepDotActive: { width: 24 },
   scrollContent: { padding: 16, paddingBottom: 120 },
   stepContainer: { gap: 20 },
   sectionTitle: { fontSize: 26, fontWeight: '900' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   row: { flexDirection: 'row', alignItems: 'center' },
   card: { borderRadius: 24, padding: 20, borderWidth: 1, elevation: 2 },
-  cardLabel: { fontSize: 10, fontWeight: '900', color: '#3b82f6', marginBottom: 10, letterSpacing: 1 },
+  cardLabel: { fontSize: 10, fontWeight: '900', marginBottom: 10, letterSpacing: 1 },
   inputWrapper: { marginBottom: 15 },
   label: { fontSize: 10, fontWeight: 'bold', marginBottom: 5 },
   input: { height: 45, borderBottomWidth: 1, fontSize: 16 },
   simpleInput: { height: 48, borderRadius: 12, paddingHorizontal: 15, marginBottom: 12, borderWidth: 1, fontSize: 14 },
   modeToggle: { flexDirection: 'row', gap: 10, marginBottom: 15 },
-  modeBtn: { flex: 1, padding: 12, borderRadius: 12, backgroundColor: '#cbd5e1', alignItems: 'center' },
-  modeBtnActive: { backgroundColor: '#2563eb' },
-  modeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 10 },
+  modeBtn: { flex: 1, padding: 12, borderRadius: 12, alignItems: 'center' },
+  modeBtnActive: { },
+  modeBtnText: { fontWeight: 'bold', fontSize: 10 },
   innerCard: { padding: 15, borderRadius: 16, marginBottom: 10 },
-  addMatBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#64748b', padding: 10, borderRadius: 10, alignSelf: 'flex-start' },
+  addMatBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10, borderRadius: 10, alignSelf: 'flex-start' },
   addMatBtnText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
   matListText: { fontSize: 11, marginTop: 5, fontStyle: 'italic' },
-  addServiceBtn: { backgroundColor: '#2563eb', padding: 16, borderRadius: 15, alignItems: 'center', marginTop: 10 },
+  addServiceBtn: { padding: 16, borderRadius: 15, alignItems: 'center', marginTop: 10 },
   addServiceBtnText: { color: '#fff', fontWeight: 'bold' },
   serviceItem: { flexDirection: 'row', padding: 18, borderRadius: 18, marginBottom: 10, borderWidth: 1 },
   summaryItem: { padding: 20, borderRadius: 24, marginBottom: 12, borderWidth: 1 },
@@ -489,16 +617,16 @@ const styles = StyleSheet.create({
   sumDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 15 },
   sumInput: { width: 60, height: 40, borderBottomWidth: 2, textAlign: 'center', fontWeight: 'bold', fontSize: 16 },
   sumLabel: { fontWeight: 'bold' },
-  sumInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
-  sumSubLabel: { fontSize: 11, color: '#94a3b8' },
-  sumTotal: { fontSize: 16, fontWeight: '900', color: '#2563eb', marginTop: 10, textAlign: 'right' },
+  sumInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15, paddingTop: 10, borderTopWidth: 1 },
+  sumSubLabel: { fontSize: 11 },
+  sumTotal: { fontSize: 16, fontWeight: '900', marginTop: 10, textAlign: 'right' },
   totalBox: { padding: 30, borderRadius: 28, alignItems: 'center', marginVertical: 20 },
-  totalLabel: { color: '#94a3b8', fontSize: 11, fontWeight: 'bold', letterSpacing: 1 },
-  totalValue: { color: '#fff', fontSize: 36, fontWeight: '900', marginTop: 8 },
+  totalLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: 'bold', letterSpacing: 1 },
+  totalValue: { fontSize: 36, fontWeight: '900', marginTop: 8 },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, flexDirection: 'row', gap: 10 },
   navBtn: { flex: 2, height: 60, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
   navBtnBack: { flex: 1 },
-  navBtnNext: { backgroundColor: '#2563eb' },
+  navBtnNext: { },
   navBtnBackText: { fontWeight: 'bold' },
   navBtnNextText: { color: '#fff', fontWeight: '900' },
   modalContent: { flex: 1, padding: 20, paddingTop: 50 },
@@ -506,9 +634,9 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 22, fontWeight: '900' },
   clientPickerItem: { flexDirection: 'row', alignItems: 'center', padding: 18, borderBottomWidth: 1 },
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  linkBtnText: { color: '#2563eb', fontWeight: 'bold', fontSize: 12 },
-  outlineAction: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 15, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#2563eb', borderStyle: 'dashed' },
-  outlineActionText: { color: '#2563eb', fontWeight: 'bold', fontSize: 12 }
+  linkBtnText: { fontWeight: 'bold', fontSize: 12 },
+  outlineAction: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 15, padding: 12, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed' },
+  outlineActionText: { fontWeight: 'bold', fontSize: 12 }
 });
 
 export default NewQuote;

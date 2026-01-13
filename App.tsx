@@ -1,10 +1,13 @@
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator, Text, Platform, TouchableOpacity } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { AppProvider, useAppContext } from './store/AppContext';
-import { SubscriptionStatus } from './types';
+import { ToastProvider } from './components/Toast';
+import { SubscriptionStatus, QuoteStatus } from './types';
+import { getThemeColors, getShadows } from './utils/theme';
 
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
@@ -17,10 +20,12 @@ import {
   UserCircle,
   Plus,
   Moon,
-  Sun
+  Sun,
+  LayoutDashboard
 } from 'lucide-react-native';
 
 import Dashboard from './screens/Dashboard';
+import ShoppingListScreen from './screens/ShoppingListScreen';
 import ServicesList from './screens/ServicesList';
 import QuoteList from './screens/QuoteList';
 import NewQuote from './screens/NewQuote';
@@ -32,37 +37,63 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 /* ==========================================================
-   1. GÓRNY HEADER (PROFIL + MOTYW)
+   1. NOWOCZESNY HEADER (Turbo Edition)
    ========================================================== */
-const CustomHeader = ({ navigation }: any) => {
+const ModernHeader = ({ navigation }: any) => {
   const { state, toggleDarkMode } = useAppContext();
-  const darkMode = state.darkMode;
+  const { user, darkMode } = state;
+  const colors = getThemeColors(darkMode);
 
   return (
-    <View style={{
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingTop: 15,
-      paddingBottom: 10,
-      backgroundColor: darkMode ? '#0f172a' : '#ffffff',
-      borderBottomWidth: 1,
-      borderBottomColor: darkMode ? '#1e293b' : '#e2e8f0',
-    }}>
-      {/* IKONA PROFILU (LEWA) - ZMIENIONO NAZWĘ NA 'SettingsTab' */}
-      <TouchableOpacity onPress={() => navigation.navigate('ProfileScreen')}>
-        <UserCircle size={32} color={darkMode ? '#f8fafc' : '#1e293b'} />
-      </TouchableOpacity>
+    <SafeAreaView style={{ backgroundColor: colors.surface }}>
+      <View style={{
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+        paddingVertical: 12, // More compact
+        backgroundColor: colors.surface,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}>
+        <View>
+          <Text style={{ fontSize: 11, color: colors.accent, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5 }}>
+            Witaj ponownie
+          </Text>
+          <Text style={{ fontSize: 18, fontWeight: '800', color: colors.text, marginTop: 2 }}>
+            {user?.companyName || 'Twoja Firma'}
+          </Text>
+        </View>
 
-      <Text style={{ fontSize: 18, fontWeight: 'bold', color: darkMode ? '#f8fafc' : '#1e293b' }}>
-        Wycena
-      </Text>
-
-      <TouchableOpacity onPress={toggleDarkMode}>
-        {darkMode ? <Sun size={28} color="#fbbf24" /> : <Moon size={28} color="#1e293b" />}
-      </TouchableOpacity>
-    </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <TouchableOpacity 
+            onPress={toggleDarkMode} 
+            style={{ 
+              padding: 8, 
+              borderRadius: 12, 
+              backgroundColor: colors.surfaceSubtle 
+            }}
+          >
+            {darkMode ? <Sun size={20} color={colors.warning} /> : <Moon size={20} color={colors.textSecondary} />}
+          </TouchableOpacity>
+          
+          <TouchableOpacity onPress={() => navigation.navigate('ProfileScreen')}>
+            <View style={{
+              width: 38,
+              height: 38,
+              borderRadius: 12,
+              backgroundColor: colors.primary,
+              justifyContent: 'center',
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: colors.border
+            }}>
+              <UserCircle size={22} color={colors.textInverted} />
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SafeAreaView>
   );
 };
 
@@ -71,31 +102,53 @@ const CustomHeader = ({ navigation }: any) => {
    ========================================================== */
 const MainTabs = ({ navigation }: any) => {
   const { state } = useAppContext();
-  const darkMode = state.darkMode;
+  const { darkMode, shoppingLists, quotes } = state;
+  const colors = getThemeColors(darkMode);
+  
+  // Logic: Count INCOMPLETE shopping lists
+  const activeShoppingCount = (shoppingLists || []).filter(l => 
+    l.items && l.items.some(i => !i.isBought)
+  ).length;
+
+  // Logic: Count ACTIVE quotes (Draft or Sent)
+  const activeQuotesCount = (quotes || []).filter(q => 
+    q.status === QuoteStatus.DRAFT || q.status === QuoteStatus.SENT
+  ).length;
 
   return (
-    <View style={{ flex: 1 }}>
-      <CustomHeader navigation={navigation} />
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <ModernHeader navigation={navigation} />
       <Tab.Navigator
+        id="MainTabs"
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: '#2563eb',
-          tabBarInactiveTintColor: '#64748b',
+          tabBarActiveTintColor: colors.accent,
+          tabBarInactiveTintColor: colors.textMuted,
           tabBarStyle: {
-            backgroundColor: darkMode ? '#0f172a' : '#ffffff',
-            borderTopColor: darkMode ? '#1e293b' : '#e2e8f0',
-            height: 70,
-            paddingBottom: 12,
-            paddingTop: 8,
+            backgroundColor: colors.surface,
+            borderTopWidth: 0,
+            elevation: 0,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: -4 },
+            shadowOpacity: 0.05,
+            shadowRadius: 10,
+            height: 70, // Slightly more compact
+            paddingBottom: 16,
+            paddingTop: 12,
           },
+          tabBarLabelStyle: {
+            fontSize: 10,
+            fontWeight: '600',
+            marginTop: 4,
+          }
         }}
       >
         <Tab.Screen
           name="MainDashboard"
           component={Dashboard}
           options={{
-            tabBarLabel: 'Zakupy',
-            tabBarIcon: ({ color }) => <ShoppingBag size={24} color={color} />,
+            tabBarLabel: 'Pulpit',
+            tabBarIcon: ({ color, focused }) => <LayoutDashboard size={24} strokeWidth={focused ? 2.5 : 2} color={color} />,
           }}
         />
         <Tab.Screen
@@ -103,7 +156,14 @@ const MainTabs = ({ navigation }: any) => {
           component={QuoteList}
           options={{
             tabBarLabel: 'Wyceny',
-            tabBarIcon: ({ color }) => <FileText size={24} color={color} />,
+            tabBarIcon: ({ color, focused }) => <FileText size={24} strokeWidth={focused ? 2.5 : 2} color={color} />,
+            tabBarBadge: activeQuotesCount > 0 ? activeQuotesCount : undefined,
+            tabBarBadgeStyle: {
+              backgroundColor: colors.danger,
+              color: '#fff',
+              fontSize: 10,
+              fontWeight: 'bold',
+            }
           }}
         />
 
@@ -114,25 +174,25 @@ const MainTabs = ({ navigation }: any) => {
             tabBarLabel: '',
             tabBarIcon: () => (
               <View style={{
-                backgroundColor: '#2563eb',
-                width: 50,
-                height: 50,
-                borderRadius: 25,
+                backgroundColor: colors.primary, 
+                width: 52,
+                height: 52,
+                borderRadius: 18,
                 justifyContent: 'center',
                 alignItems: 'center',
-                marginBottom: 20,
-                elevation: 5,
-                shadowColor: '#2563eb',
-                shadowOffset: { width: 0, height: 4 },
+                top: -8,
+                shadowColor: colors.primary,
+                shadowOffset: { width: 0, height: 8 },
                 shadowOpacity: 0.3,
-                shadowRadius: 4,
+                shadowRadius: 10,
+                elevation: 6
               }}>
-                <Plus size={30} color="#fff" />
+                <Plus size={28} color={colors.textInverted} strokeWidth={3} />
               </View>
             ),
           }}
           listeners={{
-            tabPress: (e) => {
+            tabPress: (e: any) => {
               e.preventDefault();
               navigation.navigate('NewQuote');
             },
@@ -140,21 +200,27 @@ const MainTabs = ({ navigation }: any) => {
         />
 
         <Tab.Screen
-          name="Clients"
-          component={ClientList}
-          options={{
-            tabBarLabel: 'Klienci',
-            tabBarIcon: ({ color }) => <Users size={24} color={color} />,
-          }}
-        />
-
-        {/* ZAMIENIONO PROFIL NA USŁUGI W NAVBARZE */}
-        <Tab.Screen
-          name="SettingsTab"
+          name="Services"
           component={ServicesList}
           options={{
             tabBarLabel: 'Usługi',
-            tabBarIcon: ({ color }) => <Hammer size={24} color={color} />,
+            tabBarIcon: ({ color, focused }) => <Hammer size={24} strokeWidth={focused ? 2.5 : 2} color={color} />,
+          }}
+        />
+
+        <Tab.Screen
+          name="ShoppingListScreen"
+          component={ShoppingListScreen}
+          options={{
+            tabBarLabel: 'Zakupy',
+            tabBarIcon: ({ color, focused }) => <ShoppingBag size={24} strokeWidth={focused ? 2.5 : 2} color={color} />,
+            tabBarBadge: activeShoppingCount > 0 ? activeShoppingCount : undefined,
+            tabBarBadgeStyle: {
+              backgroundColor: colors.danger,
+              color: '#fff',
+              fontSize: 10,
+              fontWeight: 'bold',
+            }
           }}
         />
       </Tab.Navigator>
@@ -167,16 +233,14 @@ const MainTabs = ({ navigation }: any) => {
    ========================================================== */
 const AppNavigator = () => {
   const { state } = useAppContext();
+  const colors = getThemeColors(state.darkMode);
 
   useEffect(() => {
     if (Platform.OS === 'android') {
       const lockUI = async () => {
         try {
           await NavigationBar.setVisibilityAsync("hidden");
-          // setBehaviorAsync nie jest wspierane z edge-to-edge, pomijamy
-          // await NavigationBar.setBehaviorAsync("overlay-swipe");
         } catch (error) {
-          // Ignoruj błędy związane z navigation bar
           console.log('NavigationBar setup skipped:', error);
         }
       };
@@ -186,10 +250,10 @@ const AppNavigator = () => {
 
   if (state.subscriptionStatus === SubscriptionStatus.CHECKING || state.subscriptionStatus === SubscriptionStatus.NONE) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: state.darkMode ? '#020617' : '#fff' }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <StatusBar hidden={true} />
-        <ActivityIndicator size="large" color="#2563eb" />
-        <Text style={{ marginTop: 15, color: state.darkMode ? '#94a3b8' : '#64748b' }}>Weryfikacja...</Text>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={{ marginTop: 15, color: colors.textMuted }}>Weryfikacja...</Text>
       </View>
     );
   }
@@ -199,20 +263,19 @@ const AppNavigator = () => {
   return (
     <NavigationContainer>
       <StatusBar hidden={true} />
-      <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
+      <Stack.Navigator id="RootStack" screenOptions={{ headerShown: false, animation: 'fade' }}>
         {!isProfileComplete ? (
-          /* Ekran profilu przy pierwszym uruchomieniu */
           <Stack.Screen name="InitialProfile">
-            {(props) => <Profile {...props} forced={true} />}
+            {(props: any) => <Profile {...props} forced={true} />}
           </Stack.Screen>
         ) : (
           <Stack.Group>
             <Stack.Screen name="MainTabs" component={MainTabs} />
             <Stack.Screen name="NewQuote" component={NewQuote} />
             <Stack.Screen name="QuoteDetails" component={QuoteDetails} />
-
-            {/* DODANO EKRAN PROFILU DO STACKA, ABY HEADER MÓGŁ DO NIEGO NAWIGOWAĆ */}
+            <Stack.Screen name="ShoppingListScreen" component={ShoppingListScreen} />
             <Stack.Screen name="ProfileScreen" component={Profile} />
+            <Stack.Screen name="ClientList" component={ClientList} /> 
           </Stack.Group>
         )}
       </Stack.Navigator>
@@ -222,8 +285,12 @@ const AppNavigator = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <AppNavigator />
-    </AppProvider>
+    <SafeAreaProvider>
+      <AppProvider>
+        <ToastProvider>
+          <AppNavigator />
+        </ToastProvider>
+      </AppProvider>
+    </SafeAreaProvider>
   );
 }

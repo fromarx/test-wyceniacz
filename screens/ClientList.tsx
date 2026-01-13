@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  TextInput, Modal, Alert, Linking, Platform, KeyboardAvoidingView
+  TextInput, Modal, Alert, Linking, Platform, KeyboardAvoidingView,
+  Keyboard
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -11,6 +12,8 @@ import {
   Edit2, X, Bell, Clock, Briefcase, User, ChevronRight, Filter
 } from 'lucide-react-native';
 import { Client, ClientReminder } from '../types';
+import { useToast } from '../components/Toast';
+import { getThemeColors, getShadows, BorderRadius } from '../utils/theme';
 
 // Konfiguracja powiadomień systemowych
 Notifications.setNotificationHandler({
@@ -18,12 +21,19 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    priority: Notifications.AndroidNotificationPriority.HIGH,
   }),
 });
 
 const ClientList: React.FC = () => {
   const { state, deleteClient, addClient, updateClient, setActiveScreen } = useAppContext();
   const { clients, darkMode } = state;
+  const colors = getThemeColors(darkMode);
+  const shadows = getShadows(darkMode);
+  const { showToast } = useToast();
+  const styles = getStyles(colors);
 
   // Stany wyszukiwania i filtrowania
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -46,7 +56,7 @@ const ClientList: React.FC = () => {
 
   const requestPermissions = async () => {
     const { status } = await Notifications.requestPermissionsAsync();
-    if (status !== 'granted') Alert.alert("Uprawnienia", "Włącz powiadomienia w ustawieniach, aby otrzymywać przypomnienia.");
+    if (status !== 'granted') showToast("Brak uprawnień do powiadomień", "info");
   };
 
   // --- LOGIKA WYSZUKIWANIA I FILTROWANIA ---
@@ -80,13 +90,17 @@ const ClientList: React.FC = () => {
     const triggerDate = new Date(eventDate.getTime() - 15 * 60000); // -15 minut
 
     if (triggerDate > new Date()) {
+      const seconds = Math.floor((triggerDate.getTime() - new Date().getTime()) / 1000);
       await Notifications.scheduleNotificationAsync({
         content: {
           title: `Zadanie: ${clientName}`,
           body: `Za 15 min: ${reminder.topic}`,
-          sound: true,
+          sound: 'default',
         },
-        trigger: triggerDate,
+        trigger: {
+          seconds: seconds > 0 ? seconds : 1,
+          repeats: false,
+        } as any,
       });
     }
   };
@@ -108,7 +122,7 @@ const ClientList: React.FC = () => {
 
   const handleSaveClient = async () => {
     if (!formData.firstName || !formData.lastName || !formData.phone) {
-      Alert.alert("Błąd", "Wypełnij wymagane pola (Imię, Nazwisko, Telefon).");
+      showToast("Wypełnij Imię, Nazwisko i Telefon", "error");
       return;
     }
 
@@ -119,14 +133,28 @@ const ClientList: React.FC = () => {
       reminders: formData.reminders || []
     } as Client;
 
-    if (editingClient) await updateClient(payload);
-    else await addClient(payload);
+    try {
+        if (editingClient) {
+            await updateClient(payload);
+            showToast("Zaktualizowano klienta", "success");
+        } else {
+            await addClient(payload);
+            showToast("Dodano nowego klienta", "success");
+        }
+    } catch (e) {
+        console.error(e);
+        showToast("Błąd zapisu", "error");
+    }
 
+    if (Platform.OS !== 'web') Keyboard.dismiss();
     setIsModalOpen(false);
   };
 
   const handleSaveReminder = async () => {
-    if (!reminderModal.client || !newReminder.topic) return;
+    if (!reminderModal.client || !newReminder.topic) {
+        showToast("Wpisz temat zadania", "error");
+        return;
+    }
 
     const reminder: ClientReminder = {
       id: `rem_${Date.now()}`,
@@ -138,63 +166,78 @@ const ClientList: React.FC = () => {
       notified: false
     };
 
+    // CRITICAL FIX: Ensure we are using the FRESH client object from state, not the stale modal prop
+    const currentClient = clients.find(c => c.id === reminderModal.client?.id);
+    
+    if (!currentClient) {
+        showToast("Nie znaleziono klienta", "error");
+        return;
+    }
+
     const updated = {
-      ...reminderModal.client,
-      reminders: [...(reminderModal.client.reminders || []), reminder]
+      ...currentClient,
+      reminders: [...(currentClient.reminders || []), reminder]
     };
 
-    await updateClient(updated);
-    await scheduleNotification(reminder, `${updated.firstName} ${updated.lastName}`);
+    try {
+        await updateClient(updated);
+        await scheduleNotification(reminder, `${updated.firstName} ${updated.lastName}`);
+        showToast("Zadanie dodane", "success");
+    } catch (e) {
+        console.error(e);
+        showToast("Błąd dodawania zadania", "error");
+    }
 
+    if (Platform.OS !== 'web') Keyboard.dismiss();
     setReminderModal({ isOpen: false, client: null });
     setNewReminder({ date: new Date(), topic: '', note: '' });
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: darkMode ? '#020617' : '#f8fafc' }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
 
       {/* HEADER: Wyszukiwarka i Filtry */}
       <View style={styles.headerBox}>
-        <View style={[styles.searchBar, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
-          <Search size={20} color="#64748b" />
+        <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
+          <Search size={20} color={colors.textMuted} />
           <TextInput
             placeholder="Szukaj (imię, nazwisko, firma)..."
-            placeholderTextColor="#64748b"
-            style={[styles.searchInput, { color: darkMode ? '#fff' : '#000' }]}
+            placeholderTextColor={colors.textMuted}
+            style={[styles.searchInput, { color: colors.text }]}
             value={searchTerm}
             onChangeText={setSearchTerm}
           />
           {searchTerm.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchTerm('')}><X size={18} color="#64748b" /></TouchableOpacity>
+            <TouchableOpacity onPress={() => setSearchTerm('')}><X size={18} color={colors.textMuted} /></TouchableOpacity>
           )}
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow}>
-          <FilterTab label="Wszyscy" active={activeFilter === 'all'} onPress={() => setActiveFilter('all')} count={clients.length} />
-          <FilterTab label="Firmy" active={activeFilter === 'company'} onPress={() => setActiveFilter('company')} icon={<Briefcase size={12} />} />
-          <FilterTab label="Prywatni" active={activeFilter === 'private'} onPress={() => setActiveFilter('private')} icon={<User size={12} />} />
-          <FilterTab label="Zadania" active={activeFilter === 'tasks'} onPress={() => setActiveFilter('tasks')} icon={<Bell size={12} />} />
+          <FilterTab label="Wszyscy" active={activeFilter === 'all'} onPress={() => setActiveFilter('all')} count={clients.length} colors={colors} styles={styles} />
+          <FilterTab label="Firmy" active={activeFilter === 'company'} onPress={() => setActiveFilter('company')} icon={<Briefcase size={12} />} colors={colors} styles={styles} />
+          <FilterTab label="Prywatni" active={activeFilter === 'private'} onPress={() => setActiveFilter('private')} icon={<User size={12} />} colors={colors} styles={styles} />
+          <FilterTab label="Zadania" active={activeFilter === 'tasks'} onPress={() => setActiveFilter('tasks')} icon={<Bell size={12} />} colors={colors} styles={styles} />
         </ScrollView>
       </View>
 
       {/* LISTA KLIENTÓW */}
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
         {filteredClients.map(client => (
-          <View key={client.id} style={[styles.card, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}>
+          <View key={client.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, ...shadows.sm }]}>
             <View style={styles.cardTop}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{client.firstName[0]}{client.lastName[0]}</Text>
+              <View style={[styles.avatar, { backgroundColor: colors.accentLight }]}>
+                <Text style={[styles.avatarText, { color: colors.accent }]}>{client.firstName[0]}{client.lastName[0]}</Text>
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={[styles.nameText, { color: darkMode ? '#fff' : '#0f172a' }]}>{client.firstName} {client.lastName}</Text>
-                <Text style={styles.subText}>{client.companyName || 'Osoba prywatna'}</Text>
+                <Text style={[styles.nameText, { color: colors.text }]}>{client.firstName} {client.lastName}</Text>
+                <Text style={[styles.subText, { color: colors.textSecondary }]}>{client.companyName || 'Osoba prywatna'}</Text>
               </View>
               <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => Linking.openURL(`tel:${client.phone}`)} style={[styles.circleAction, { backgroundColor: '#22c55e' }]}>
+                <TouchableOpacity onPress={() => Linking.openURL(`tel:${client.phone}`)} style={[styles.circleAction, { backgroundColor: colors.success }]}>
                   <Phone size={16} color="#fff" />
                 </TouchableOpacity>
                 {client.email && (
-                  <TouchableOpacity onPress={() => Linking.openURL(`mailto:${client.email}`)} style={[styles.circleAction, { backgroundColor: '#3b82f6' }]}>
+                  <TouchableOpacity onPress={() => Linking.openURL(`mailto:${client.email}`)} style={[styles.circleAction, { backgroundColor: colors.accent }]}>
                     <Mail size={16} color="#fff" />
                   </TouchableOpacity>
                 )}
@@ -205,27 +248,35 @@ const ClientList: React.FC = () => {
             {client.reminders && client.reminders.length > 0 && (
               <View style={styles.reminderSection}>
                 {client.reminders.slice(0, 2).map(rem => (
-                  <View key={rem.id} style={[styles.reminderBar, { backgroundColor: darkMode ? '#1e293b' : '#f1f5f9' }]}>
+                  <View key={rem.id} style={[styles.reminderBar, { backgroundColor: colors.surfaceSubtle }]}>
                     <View style={styles.remHeader}>
-                      <Clock size={12} color="#3b82f6" />
-                      <Text style={[styles.remTopic, { color: darkMode ? '#fff' : '#1e293b' }]} numberOfLines={1}>{rem.topic}</Text>
-                      <Text style={styles.remTime}>{rem.time}</Text>
+                      <Clock size={12} color={colors.accent} />
+                      <Text style={[styles.remTopic, { color: colors.text }]} numberOfLines={1}>{rem.topic}</Text>
+                      <Text style={[styles.remTime, { color: colors.accent }]}>{rem.time}</Text>
                     </View>
-                    {rem.note ? <Text style={styles.remNote} numberOfLines={1}>{rem.note}</Text> : null}
+                    {rem.note ? <Text style={[styles.remNote, { color: colors.textMuted }]} numberOfLines={1}>{rem.note}</Text> : null}
                   </View>
                 ))}
               </View>
             )}
 
-            <View style={styles.cardFooter}>
+            <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
               <TouchableOpacity onPress={() => setReminderModal({ isOpen: true, client })} style={styles.footerBtn}>
-                <Plus size={14} color="#3b82f6" /><Text style={styles.footerBtnText}>ZADANIE</Text>
+                <Plus size={14} color={colors.accent} /><Text style={[styles.footerBtnText, { color: colors.accent }]}>ZADANIE</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => handleOpenModal(client)} style={styles.footerBtn}>
-                <Edit2 size={14} color="#64748b" /><Text style={styles.footerBtnText}>EDYTUJ</Text>
+                <Edit2 size={14} color={colors.textSecondary} /><Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>EDYTUJ</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => deleteClient(client.id)} style={styles.footerBtn}>
-                <Trash2 size={14} color="#ef4444" /><Text style={[styles.footerBtnText, {color: '#ef4444'}]}>USUŃ</Text>
+              <TouchableOpacity onPress={() => {
+                  Alert.alert("Usuń klienta", "Czy na pewno?", [
+                      { text: "Anuluj", style: "cancel" },
+                      { text: "Usuń", style: "destructive", onPress: () => {
+                          deleteClient(client.id);
+                          showToast("Klient usunięty", "info");
+                      }}
+                  ])
+              }} style={styles.footerBtn}>
+                <Trash2 size={14} color={colors.danger} /><Text style={[styles.footerBtnText, {color: colors.danger}]}>USUŃ</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -233,43 +284,50 @@ const ClientList: React.FC = () => {
       </ScrollView>
 
       {/* Floating Add Button */}
-      <TouchableOpacity onPress={() => handleOpenModal()} style={styles.fab}>
+      <TouchableOpacity onPress={() => handleOpenModal()} style={[styles.fab, { backgroundColor: colors.accent }]}>
         <Plus size={32} color="#fff" />
       </TouchableOpacity>
 
       {/* MODAL KLIENTA */}
-      <Modal visible={isModalOpen} animationType="slide">
-        <View style={[styles.modalContent, { backgroundColor: darkMode ? '#020617' : '#fff' }]}>
+      <Modal 
+        visible={isModalOpen} 
+        animationType="slide"
+        onRequestClose={() => {
+          if (Platform.OS !== 'web' && Keyboard && Keyboard.dismiss) Keyboard.dismiss();
+          setIsModalOpen(false);
+        }}
+      >
+        <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
           <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#0f172a' }]}>{editingClient ? 'Edycja' : 'Nowy Klient'}</Text>
-            <TouchableOpacity onPress={() => setIsModalOpen(false)}><X size={24} color={darkMode ? '#fff' : '#000'} /></TouchableOpacity>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{editingClient ? 'Edycja' : 'Nowy Klient'}</Text>
+            <TouchableOpacity onPress={() => { if (Platform.OS !== 'web' && Keyboard && Keyboard.dismiss) Keyboard.dismiss(); setIsModalOpen(false); }}><X size={24} color={colors.text} /></TouchableOpacity>
           </View>
           <ScrollView style={{ padding: 20 }}>
             <KeyboardAvoidingView behavior="padding">
-              <Label text="DANE OSOBOWE" />
+              <Label text="DANE OSOBOWE" colors={colors} styles={styles} />
               <View style={styles.row}>
-                <Input label="Imię*" value={formData.firstName} onChangeText={(v:any)=>setFormData({...formData, firstName:v})} darkMode={darkMode} />
-                <Input label="Nazwisko*" value={formData.lastName} onChangeText={(v:any)=>setFormData({...formData, lastName:v})} darkMode={darkMode} />
+                <Input label="Imię*" value={formData.firstName} onChangeText={(v:any)=>setFormData({...formData, firstName:v})} colors={colors} styles={styles} />
+                <Input label="Nazwisko*" value={formData.lastName} onChangeText={(v:any)=>setFormData({...formData, lastName:v})} colors={colors} styles={styles} />
               </View>
-              <Input label="Telefon*" value={formData.phone} onChangeText={(v:any)=>setFormData({...formData, phone:v})} darkMode={darkMode} keyboardType="phone-pad" />
-              <Input label="Email" value={formData.email} onChangeText={(v:any)=>setFormData({...formData, email:v})} darkMode={darkMode} keyboardType="email-address" />
+              <Input label="Telefon*" value={formData.phone} onChangeText={(v:any)=>setFormData({...formData, phone:v})} colors={colors} styles={styles} keyboardType="phone-pad" />
+              <Input label="Email" value={formData.email} onChangeText={(v:any)=>setFormData({...formData, email:v})} colors={colors} styles={styles} keyboardType="email-address" />
 
-              <Label text="DANE FIRMY" />
-              <Input label="Nazwa firmy" value={formData.companyName} onChangeText={(v:any)=>setFormData({...formData, companyName:v})} darkMode={darkMode} />
-              <Input label="NIP" value={formData.nip} onChangeText={(v:any)=>setFormData({...formData, nip:v})} darkMode={darkMode} keyboardType="numeric" />
+              <Label text="DANE FIRMY" colors={colors} styles={styles} />
+              <Input label="Nazwa firmy" value={formData.companyName} onChangeText={(v:any)=>setFormData({...formData, companyName:v})} colors={colors} styles={styles} />
+              <Input label="NIP" value={formData.nip} onChangeText={(v:any)=>setFormData({...formData, nip:v})} colors={colors} styles={styles} keyboardType="numeric" />
 
-              <Label text="ADRES" />
-              <Input label="Ulica" value={formData.street} onChangeText={(v:any)=>setFormData({...formData, street:v})} darkMode={darkMode} />
+              <Label text="ADRES" colors={colors} styles={styles} />
+              <Input label="Ulica" value={formData.street} onChangeText={(v:any)=>setFormData({...formData, street:v})} colors={colors} styles={styles} />
               <View style={styles.row}>
-                <Input label="Nr domu" value={formData.houseNo} onChangeText={(v:any)=>setFormData({...formData, houseNo:v})} darkMode={darkMode} />
-                <Input label="Nr lokalu" value={formData.apartmentNo} onChangeText={(v:any)=>setFormData({...formData, apartmentNo:v})} darkMode={darkMode} />
+                <Input label="Nr domu" value={formData.houseNo} onChangeText={(v:any)=>setFormData({...formData, houseNo:v})} colors={colors} styles={styles} />
+                <Input label="Nr lokalu" value={formData.apartmentNo} onChangeText={(v:any)=>setFormData({...formData, apartmentNo:v})} colors={colors} styles={styles} />
               </View>
               <View style={styles.row}>
-                <Input label="Kod pocztowy" value={formData.postalCode} onChangeText={(v:any)=>setFormData({...formData, postalCode:v})} darkMode={darkMode} />
-                <Input label="Miejscowość" value={formData.city} onChangeText={(v:any)=>setFormData({...formData, city:v})} darkMode={darkMode} />
+                <Input label="Kod pocztowy" value={formData.postalCode} onChangeText={(v:any)=>setFormData({...formData, postalCode:v})} colors={colors} styles={styles} />
+                <Input label="Miejscowość" value={formData.city} onChangeText={(v:any)=>setFormData({...formData, city:v})} colors={colors} styles={styles} />
               </View>
 
-              <TouchableOpacity onPress={handleSaveClient} style={styles.saveBtn}>
+              <TouchableOpacity onPress={handleSaveClient} style={[styles.saveBtn, { backgroundColor: colors.accent }]}>
                 <Text style={styles.saveBtnText}>ZAPISZ KLIENTA</Text>
               </TouchableOpacity>
               <View style={{ height: 50 }} />
@@ -279,28 +337,36 @@ const ClientList: React.FC = () => {
       </Modal>
 
       {/* MODAL ZADANIA */}
-      <Modal visible={reminderModal.isOpen} transparent animationType="fade">
+      <Modal 
+        visible={reminderModal.isOpen} 
+        transparent 
+        animationType="fade"
+        onRequestClose={() => {
+          if (Platform.OS !== 'web' && Keyboard && Keyboard.dismiss) Keyboard.dismiss();
+          setReminderModal({ ...reminderModal, isOpen: false });
+        }}
+      >
         <View style={styles.overlay}>
-          <View style={[styles.remCard, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
-            <Text style={[styles.remTitle, { color: darkMode ? '#fff' : '#000' }]}>Nowe zadanie</Text>
+          <View style={[styles.remCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.remTitle, { color: colors.text }]}>Nowe zadanie</Text>
             <TextInput
               placeholder="Co trzeba zrobić?"
-              placeholderTextColor="#64748b"
-              style={[styles.remInput, { backgroundColor: darkMode ? '#020617' : '#f8fafc', color: darkMode ? '#fff' : '#000' }]}
+              placeholderTextColor={colors.textMuted}
+              style={[styles.remInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
               value={newReminder.topic}
               onChangeText={(v) => setNewReminder({...newReminder, topic: v})}
             />
             <TextInput
               placeholder="Notatka (opcjonalnie)..."
-              placeholderTextColor="#64748b"
+              placeholderTextColor={colors.textMuted}
               multiline
-              style={[styles.remInput, { backgroundColor: darkMode ? '#020617' : '#f8fafc', color: darkMode ? '#fff' : '#000', height: 80, textAlignVertical: 'top' }]}
+              style={[styles.remInput, { backgroundColor: colors.background, color: colors.text, height: 80, textAlignVertical: 'top', borderColor: colors.border, borderWidth: 1 }]}
               value={newReminder.note}
               onChangeText={(v) => setNewReminder({...newReminder, note: v})}
             />
-            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateBtn}>
-              <Clock size={16} color="#3b82f6" />
-              <Text style={styles.dateBtnText}>{newReminder.date.toLocaleString('pl-PL')}</Text>
+            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={[styles.dateBtn, { borderColor: colors.border }]}>
+              <Clock size={16} color={colors.accent} />
+              <Text style={[styles.dateBtnText, { color: colors.accent }]}>{newReminder.date.toLocaleString('pl-PL')}</Text>
             </TouchableOpacity>
 
             {showDatePicker && (
@@ -312,10 +378,10 @@ const ClientList: React.FC = () => {
               />
             )}
 
-            <TouchableOpacity onPress={handleSaveReminder} style={styles.saveBtn}>
+            <TouchableOpacity onPress={handleSaveReminder} style={[styles.saveBtn, { backgroundColor: colors.accent }]}>
               <Text style={styles.saveBtnText}>ZAPISZ I POWIADOM</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setReminderModal({isOpen:false, client:null})} style={{marginTop:15}}><Text style={{color:'#64748b', textAlign:'center'}}>Anuluj</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setReminderModal({isOpen:false, client:null})} style={{marginTop:15}}><Text style={{color:colors.textSecondary, textAlign:'center'}}>Anuluj</Text></TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -325,72 +391,82 @@ const ClientList: React.FC = () => {
 };
 
 // --- Komponenty pomocnicze ---
-const FilterTab = ({ label, active, onPress, icon, count }: any) => (
-  <TouchableOpacity onPress={onPress} style={[styles.tab, active && styles.tabActive]}>
-    {icon && React.cloneElement(icon, { color: active ? '#fff' : '#64748b' })}
-    <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-    {count !== undefined && <Text style={[styles.countBadge, active && styles.countBadgeActive]}>{count}</Text>}
+const FilterTab = ({ label, active, onPress, icon, count, colors, styles }: any) => (
+  <TouchableOpacity 
+    onPress={onPress} 
+    style={[
+      styles.tab, 
+      active ? { backgroundColor: colors.accent } : { backgroundColor: colors.surfaceSubtle }
+    ]}
+  >
+    {icon && React.cloneElement(icon, { color: active ? '#fff' : colors.textSecondary })}
+    <Text style={[styles.tabText, { color: active ? '#fff' : colors.textSecondary }]}>{label}</Text>
+    {count !== undefined && (
+        <Text style={[
+            styles.countBadge, 
+            active ? { backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff' } : { backgroundColor: colors.border, color: colors.textSecondary }
+        ]}>
+            {count}
+        </Text>
+    )}
   </TouchableOpacity>
 );
 
-const Label = ({ text }: { text: string }) => <Text style={styles.formLabel}>{text}</Text>;
+const Label = ({ text, colors, styles }: { text: string, colors: any, styles: any }) => <Text style={[styles.formLabel, { color: colors.accent }]}>{text}</Text>;
 
-const Input = ({ label, value, onChangeText, darkMode, keyboardType }: any) => (
+const Input = ({ label, value, onChangeText, colors, styles, keyboardType }: any) => (
   <View style={{ flex: 1, marginBottom: 15, marginHorizontal: 4 }}>
-    <Text style={styles.inputTitle}>{label}</Text>
+    <Text style={[styles.inputTitle, { color: colors.textSecondary }]}>{label}</Text>
     <TextInput
       value={value}
       onChangeText={onChangeText}
       keyboardType={keyboardType}
-      style={[styles.inputField, { backgroundColor: darkMode ? '#0f172a' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}
+      style={[styles.inputField, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
     />
   </View>
 );
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1 },
   headerBox: { padding: 16, gap: 12 },
   searchBar: { flexDirection: 'row', alignItems: 'center', height: 52, borderRadius: 16, paddingHorizontal: 15, elevation: 2 },
   searchInput: { flex: 1, marginLeft: 10, fontSize: 14, fontWeight: '600' },
   filterRow: { flexDirection: 'row' },
-  tab: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f1f5f9', marginRight: 8, gap: 6 },
-  tabActive: { backgroundColor: '#2563eb' },
-  tabText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
-  tabTextActive: { color: '#fff' },
-  countBadge: { fontSize: 10, backgroundColor: '#e2e8f0', paddingHorizontal: 6, borderRadius: 10, color: '#64748b' },
-  countBadgeActive: { backgroundColor: '#3b82f6', color: '#fff' },
+  tab: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginRight: 8, gap: 6 },
+  tabText: { fontSize: 12, fontWeight: '700' },
+  countBadge: { fontSize: 10, paddingHorizontal: 6, borderRadius: 10 },
   card: { borderRadius: 24, padding: 16, marginBottom: 16, borderWidth: 1, elevation: 2 },
   cardTop: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#2563eb20', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { color: '#2563eb', fontWeight: '900', fontSize: 16 },
+  avatar: { width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontWeight: '900', fontSize: 16 },
   nameText: { fontSize: 16, fontWeight: '800' },
-  subText: { fontSize: 12, color: '#64748b', marginTop: 2 },
+  subText: { fontSize: 12, marginTop: 2 },
   cardActions: { flexDirection: 'row', gap: 8 },
   circleAction: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   reminderSection: { marginTop: 12, gap: 6 },
   reminderBar: { padding: 10, borderRadius: 12 },
   remHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   remTopic: { flex: 1, fontSize: 12, fontWeight: '700' },
-  remTime: { fontSize: 10, fontWeight: '800', color: '#3b82f6' },
-  remNote: { fontSize: 11, color: '#94a3b8', fontStyle: 'italic', marginTop: 2 },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, borderTopWidth: 1, borderTopColor: '#e2e8f020', paddingTop: 10 },
+  remTime: { fontSize: 10, fontWeight: '800' },
+  remNote: { fontSize: 11, fontStyle: 'italic', marginTop: 2 },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, borderTopWidth: 1, paddingTop: 10 },
   footerBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, padding: 5 },
-  footerBtnText: { fontSize: 11, fontWeight: '800', color: '#64748b' },
-  fab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 20, backgroundColor: '#2563eb', justifyContent: 'center', alignItems: 'center', elevation: 10 },
+  footerBtnText: { fontSize: 11, fontWeight: '800' },
+  fab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center', elevation: 10 },
   modalContent: { flex: 1 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 50 },
   modalTitle: { fontSize: 20, fontWeight: '900' },
-  formLabel: { fontSize: 11, fontWeight: '900', color: '#3b82f6', marginTop: 20, marginBottom: 10, letterSpacing: 1 },
-  inputTitle: { fontSize: 10, fontWeight: '700', color: '#64748b', marginBottom: 5 },
+  formLabel: { fontSize: 11, fontWeight: '900', marginTop: 20, marginBottom: 10, letterSpacing: 1 },
+  inputTitle: { fontSize: 10, fontWeight: '700', marginBottom: 5 },
   inputField: { height: 48, borderRadius: 12, borderWidth: 1, paddingHorizontal: 12, fontSize: 14, fontWeight: '600' },
-  saveBtn: { backgroundColor: '#2563eb', height: 55, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginTop: 20 },
+  saveBtn: { height: 55, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginTop: 20 },
   saveBtnText: { color: '#fff', fontWeight: '900', fontSize: 15 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: 20 },
   remCard: { borderRadius: 28, padding: 25 },
   remTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20, textAlign: 'center' },
   remInput: { height: 50, borderRadius: 12, paddingHorizontal: 15, marginBottom: 15, fontWeight: '600' },
-  dateBtn: { height: 50, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, gap: 10, marginBottom: 15 },
-  dateBtnText: { fontSize: 14, fontWeight: '700', color: '#3b82f6' },
+  dateBtn: { height: 50, borderRadius: 12, borderWidth: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, gap: 10, marginBottom: 15 },
+  dateBtnText: { fontSize: 14, fontWeight: '700' },
   row: { flexDirection: 'row' }
 });
 
