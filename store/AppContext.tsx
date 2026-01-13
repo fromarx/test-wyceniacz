@@ -40,6 +40,8 @@ const executeSql = async <T,>(sql: string, params: any[] = []): Promise<T[]> => 
   return [];
 };
 
+const FORCE_DEV_MODE = true;
+
 const upsert = async (table: string, item: any) => {
   // Serializuj tablice i obiekty do JSON przed zapisem
   const serializedItem: any = { ...item };
@@ -150,9 +152,10 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   const checkSubscription = useCallback(async (): Promise<SubscriptionStatus> => {
     try {
       const devMode = __DEV__ || process.env.NODE_ENV === 'development';
-      if (devMode) {
-        console.log('[DEV] Pomijanie sprawdzania subskrypcji - tryb deweloperski');
+    if (FORCE_DEV_MODE) {
+        console.log("FORCE DEV MODE: Subskrypcja aktywna");
         return SubscriptionStatus.ACTIVE;
+    }
       }
 
       if (!(await Purchases.isConfigured())) {
