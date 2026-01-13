@@ -10,7 +10,7 @@ export class FinanceUtils {
     if (item.materialMode === 'estimated') {
       return (item.estimatedMaterialPrice || 0) * item.quantity;
     }
-    return (item.materials || []).reduce((acc, m) => acc + (m.price * m.quantity), 0);
+    return (item.materials || []).reduce((acc, m) => acc + (m.price * (m.consumption || 1) * item.quantity), 0);
   }
 
   static getQuoteTotals(items: QuoteItem[]) {

@@ -5,7 +5,8 @@
     "version": "1.0.0",
     "plugins": [
       "@react-native-community/datetimepicker",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-mail-composer"
     ],
     "extra": {
       "eas": {
@@ -14,10 +15,6 @@
     },
     "android": {
       "package": "com.frosowsky.wycena",
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
       "statusBar": {
         "hidden": true
       },
@@ -25,6 +22,5 @@
         "visible": false
       }
     }
-  },
-  "name": "Wycena"
+  }
 }

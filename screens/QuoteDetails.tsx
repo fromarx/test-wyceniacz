@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { 
   View, Text, TouchableOpacity, ScrollView, StyleSheet, 
-  ActivityIndicator, SafeAreaView, Share, Platform 
+  ActivityIndicator, Alert
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAppContext } from '../store/AppContext';
 import { 
@@ -11,7 +12,7 @@ import {
 } from 'lucide-react-native';
 import { QuoteStatus } from '../types';
 import { FinanceUtils } from '../utils/FinanceUtils';
- import { PdfGenerator } from '../utils/PdfServiceMobile'; // Wymaga osobnej implementacji dla mobile
+import { PdfGenerator } from '../utils/PdfServiceMobile';
 
 const QuoteDetails: React.FC = () => {
   const navigation = useNavigation<any>();
@@ -24,24 +25,24 @@ const QuoteDetails: React.FC = () => {
   const quote = state.quotes.find(q => q.id === id);
   if (!quote) return null;
 
-  const totals = FinanceUtils.getQuoteTotals(quote.items);
+  // ZABEZPIECZENIE PRZED BŁĘDEM items.reduce
+  const safeItems = Array.isArray(quote.items) ? quote.items : [];
+  const totals = FinanceUtils.getQuoteTotals(safeItems);
 
   const handleDownloadPdf = async () => {
     if (isGenerating) return;
     setIsGenerating(true);
     
     try {
-      // W wersji mobile zamiast prostego pobrania, generujemy i wywołujemy systemowe Share
-      // await PdfGenerator.generateAndShare(quote, user);
+      await PdfGenerator.generateAndShare(quote, user);
       
       if (quote.status === QuoteStatus.DRAFT) {
         updateQuote({ ...quote, status: QuoteStatus.SENT });
       }
-      
-      // Symulacja dla demo:
-      setTimeout(() => setIsGenerating(false), 1500);
     } catch (error) {
       console.error("PDF Error:", error);
+      Alert.alert("Błąd", "Nie udało się wygenerować PDF.");
+    } finally {
       setIsGenerating(false);
     }
   };
@@ -64,7 +65,7 @@ const QuoteDetails: React.FC = () => {
           </TouchableOpacity>
           <View style={styles.actionGroup}>
             <TouchableOpacity 
-              onPress={() => navigation.navigate('EditQuote', { id: quote.id })}
+              onPress={() => navigation.navigate('NewQuote', { id: quote.id })}
               style={[styles.editBtn, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#cbd5e1' }]}
             >
               <Edit3 size={14} color="#3b82f6" />
@@ -130,7 +131,7 @@ const QuoteDetails: React.FC = () => {
               <Text style={styles.statValuePrimary}>{totals.totalNet.toLocaleString()} zł</Text>
             </View>
             <View style={styles.statRow}>
-              <Text style={styles.statLabel}>VAT ({quote.items[0]?.vatRate || 8}%)</Text>
+              <Text style={styles.statLabel}>VAT ({safeItems[0]?.vatRate || 8}%)</Text>
               <Text style={styles.statValue}>{totals.totalVat.toLocaleString()} zł</Text>
             </View>
           </View>
@@ -147,7 +148,7 @@ const QuoteDetails: React.FC = () => {
         {/* Scope of works */}
         <Text style={[styles.sectionHeader, { color: darkMode ? '#475569' : '#1e293b' }]}>ZAKRES PRAC</Text>
         <View style={styles.itemsList}>
-          {quote.items.map((item, idx) => (
+          {safeItems.map((item, idx) => (
             <View key={idx} style={[styles.itemCard, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}>
               <View style={styles.itemHeader}>
                 <View style={styles.itemIndex}><Text style={styles.itemIndexText}>{idx + 1}</Text></View>

@@ -171,8 +171,14 @@ const AppNavigator = () => {
   useEffect(() => {
     if (Platform.OS === 'android') {
       const lockUI = async () => {
-        await NavigationBar.setVisibilityAsync("hidden");
-        await NavigationBar.setBehaviorAsync("overlay-swipe");
+        try {
+          await NavigationBar.setVisibilityAsync("hidden");
+          // setBehaviorAsync nie jest wspierane z edge-to-edge, pomijamy
+          // await NavigationBar.setBehaviorAsync("overlay-swipe");
+        } catch (error) {
+          // Ignoruj błędy związane z navigation bar
+          console.log('NavigationBar setup skipped:', error);
+        }
       };
       lockUI();
     }

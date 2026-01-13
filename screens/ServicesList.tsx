@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  TextInput, Modal, Alert, SafeAreaView
+  TextInput, Modal, Alert, Animated
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import { useAppContext } from '../store/AppContext';
 import {
@@ -10,10 +11,12 @@ import {
   X, Save, FolderPlus
 } from 'lucide-react-native';
 import { Service, UnitOfMeasure, MaterialItem, MaterialMode, Category } from '../types';
+import { getThemeColors } from '../utils/theme';
 
 const ServicesList: React.FC = () => {
   const { state, addService, updateService, setActiveScreen, deleteService, addCategory, deleteCategory } = useAppContext();
   const { darkMode, categories, services } = state;
+  const colors = getThemeColors(darkMode);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
@@ -22,6 +25,31 @@ const ServicesList: React.FC = () => {
   const [newCatName, setNewCatName] = useState('');
 
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
+  
+  // Animacje
+  const modalOpacity = useRef(new Animated.Value(0)).current;
+  const modalScale = useRef(new Animated.Value(0.9)).current;
+  
+  useEffect(() => {
+    if (isModalOpen || isCatModalOpen) {
+      Animated.parallel([
+        Animated.timing(modalOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.spring(modalScale, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      modalOpacity.setValue(0);
+      modalScale.setValue(0.9);
+    }
+  }, [isModalOpen, isCatModalOpen]);
 
   const [formData, setFormData] = useState({
     name: '', description: '', netPrice: '', vatRate: '8',
@@ -44,7 +72,7 @@ const ServicesList: React.FC = () => {
 useEffect(() => {
   setActiveScreen('Usługi'); // lub odpowiednia nazwa
 }, []);
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.name || !formData.netPrice) {
       Alert.alert("Błąd", "Podaj nazwę i cenę usługi.");
       return;
@@ -52,21 +80,28 @@ useEffect(() => {
 
     const serviceData: Service = {
       id: editingService?.id || Date.now().toString(),
-      name: formData.name,
-      description: formData.description,
+      name: formData.name.trim(),
+      description: formData.description.trim(),
       netPrice: parseFloat(formData.netPrice) || 0,
-      vatRate: parseInt(formData.vatRate),
+      vatRate: parseInt(formData.vatRate) || 8,
       unit: formData.unit,
-      // Jeśli puste, wymuszamy cat_general
       categoryId: formData.categoryId || 'cat_general',
       materialMode: formData.materialMode,
-      estimatedMaterialPrice: formData.materialMode === 'estimated' ? parseFloat(formData.estimatedMaterialPrice) : 0,
+      estimatedMaterialPrice: formData.materialMode === 'estimated' ? (parseFloat(formData.estimatedMaterialPrice) || 0) : 0,
       defaultMaterials: formData.materialMode === 'detailed' ? formData.materials : []
     };
 
-    if (editingService) updateService(serviceData);
-    else addService(serviceData);
-    resetForm();
+    try {
+      if (editingService) {
+        await updateService(serviceData);
+      } else {
+        await addService(serviceData);
+      }
+      resetForm();
+    } catch (error) {
+      console.error('Błąd zapisywania usługi:', error);
+      Alert.alert("Błąd", "Nie udało się zapisać usługi.");
+    }
   };
 
   const resetForm = () => {
@@ -95,27 +130,29 @@ useEffect(() => {
     setIsModalOpen(true);
   };
 
-  const filteredServices = services.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredServices = services.filter(s => 
+    s.name && s.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: darkMode ? '#020617' : '#f8fafc' }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
 
       <View style={styles.topBar}>
-        <View style={[styles.searchWrapper, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
-          <Search size={18} color="#64748b" />
+        <View style={[styles.searchWrapper, { backgroundColor: colors.surfaceElevated }]}>
+          <Search size={18} color={colors.textMuted} />
           <TextInput
             placeholder="Szukaj usługi..."
-            placeholderTextColor="#64748b"
-            style={[styles.searchInput, { color: darkMode ? '#fff' : '#000' }]}
+            placeholderTextColor={colors.textMuted}
+            style={[styles.searchInput, { color: colors.text }]}
             value={searchTerm}
             onChangeText={setSearchTerm}
           />
         </View>
         <TouchableOpacity
           onPress={() => setIsCatModalOpen(true)}
-          style={[styles.catBtn, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}
+          style={[styles.catBtn, { backgroundColor: colors.surfaceElevated }]}
         >
-          <FolderPlus size={22} color="#2563eb" />
+          <FolderPlus size={22} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -183,37 +220,50 @@ useEffect(() => {
         })()}
       </ScrollView>
 
-      <TouchableOpacity onPress={() => setIsModalOpen(true)} style={styles.fab}>
+      <TouchableOpacity 
+        onPress={() => setIsModalOpen(true)} 
+        style={[styles.fab, { backgroundColor: colors.primary }]}
+        activeOpacity={0.8}
+      >
         <Plus size={32} color="#fff" />
       </TouchableOpacity>
 
       {/* MODAL KATEGORII */}
       <Modal visible={isCatModalOpen} transparent animationType="fade" onRequestClose={() => setIsCatModalOpen(false)}>
         <View style={styles.modalOverlay}>
-            <View style={[styles.catModalContent, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
-                <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#000', marginBottom: 15 }]}>Nowa kategoria</Text>
+            <Animated.View 
+              style={[
+                styles.catModalContent, 
+                { 
+                  backgroundColor: colors.surfaceElevated,
+                  opacity: modalOpacity,
+                  transform: [{ scale: modalScale }]
+                }
+              ]}
+            >
+                <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 15 }]}>Nowa kategoria</Text>
                 <TextInput
-                    style={[styles.input, { backgroundColor: darkMode ? '#1e293b' : '#f1f5f9', color: darkMode ? '#fff' : '#000' }]}
+                    style={[styles.input, { backgroundColor: colors.surface, color: colors.text }]}
                     placeholder="Wpisz nazwę..."
-                    placeholderTextColor="#64748b"
+                    placeholderTextColor={colors.textMuted}
                     value={newCatName}
                     onChangeText={setNewCatName}
                 />
                 <View style={[styles.row, { marginTop: 20 }]}>
-                    <TouchableOpacity onPress={() => setIsCatModalOpen(false)} style={[styles.saveBtn, { flex: 1, backgroundColor: '#64748b' }]}>
+                    <TouchableOpacity onPress={() => setIsCatModalOpen(false)} style={[styles.saveBtn, { flex: 1, backgroundColor: colors.textMuted }]}>
                         <Text style={styles.saveBtnText}>ANULUJ</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={handleAddCategory} style={[styles.saveBtn, { flex: 1, marginLeft: 10 }]}>
+                    <TouchableOpacity onPress={handleAddCategory} style={[styles.saveBtn, { flex: 1, marginLeft: 10, backgroundColor: colors.primary }]}>
                         <Text style={styles.saveBtnText}>DODAJ</Text>
                     </TouchableOpacity>
                 </View>
-            </View>
+            </Animated.View>
         </View>
       </Modal>
 
       {/* MODAL USŁUGI */}
       <Modal visible={isModalOpen} animationType="slide" onRequestClose={resetForm}>
-        <SafeAreaView style={[styles.modalBody, { backgroundColor: darkMode ? '#020617' : '#fff' }]}>
+        <SafeAreaView style={[styles.modalBody, { backgroundColor: colors.background }]}>
           <View style={styles.modalHeader}>
             <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#000' }]}>{editingService ? 'Edycja' : 'Nowa usługa'}</Text>
             <TouchableOpacity onPress={resetForm}><X size={28} color={darkMode ? '#fff' : '#000'} /></TouchableOpacity>
@@ -276,16 +326,59 @@ useEffect(() => {
   );
 };
 
-const ServiceCard = ({ service, darkMode, onEdit, onDelete }: any) => (
-  <View style={[styles.card, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}>
-    <Text style={[styles.cardTitle, { color: darkMode ? '#f1f5f9' : '#0f172a' }]} numberOfLines={2}>{service.name.toUpperCase()}</Text>
-    <Text style={styles.cardPrice}>{service.netPrice} zł <Text style={styles.cardUnit}>/ {service.unit}</Text></Text>
-    <View style={styles.cardActions}>
-      <TouchableOpacity onPress={onEdit} style={styles.actionBtn}><Edit2 size={14} color="#3b82f6" /></TouchableOpacity>
-      <TouchableOpacity onPress={onDelete} style={styles.actionBtn}><Trash2 size={14} color="#ef4444" /></TouchableOpacity>
-    </View>
-  </View>
-);
+const ServiceCard = ({ service, darkMode, onEdit, onDelete }: any) => {
+  const colors = getThemeColors(darkMode);
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+  
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+  
+  return (
+    <Animated.View 
+      style={[
+        styles.card, 
+        { 
+          backgroundColor: colors.surfaceElevated, 
+          borderColor: colors.border,
+          transform: [{ scale: scaleAnim }]
+        }
+      ]}
+    >
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={{ flex: 1 }}
+      >
+        <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
+          {service.name?.toUpperCase() || 'Bez nazwy'}
+        </Text>
+        <Text style={[styles.cardPrice, { color: colors.primary }]}>
+          {service.netPrice} zł <Text style={[styles.cardUnit, { color: colors.textMuted }]}>/ {service.unit}</Text>
+        </Text>
+        <View style={styles.cardActions}>
+          <TouchableOpacity onPress={onEdit} style={[styles.actionBtn, { backgroundColor: colors.borderLight }]}>
+            <Edit2 size={14} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onDelete} style={[styles.actionBtn, { backgroundColor: colors.borderLight }]}>
+            <Trash2 size={14} color={colors.danger} />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
 
 // Style pozostają bez zmian jak w oryginale
 const styles = StyleSheet.create({
@@ -304,7 +397,22 @@ const styles = StyleSheet.create({
   cardUnit: { fontSize: 8, color: '#64748b' },
   cardActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10, gap: 5 },
   actionBtn: { padding: 8, backgroundColor: '#f1f5f9', borderRadius: 10 },
-  fab: { position: 'absolute', bottom: 30, right: 24, width: 64, height: 64, borderRadius: 24, backgroundColor: '#2563eb', justifyContent: 'center', alignItems: 'center', elevation: 8 },
+  fab: { 
+    position: 'absolute', 
+    bottom: 30, 
+    right: 24, 
+    width: 64, 
+    height: 64, 
+    borderRadius: 24, 
+    backgroundColor: '#6366f1', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    elevation: 8,
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
   modalBody: { flex: 1 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
   modalTitle: { fontSize: 20, fontWeight: '900' },
@@ -314,7 +422,21 @@ const styles = StyleSheet.create({
   input: { height: 50, borderRadius: 12, paddingHorizontal: 15, fontWeight: 'bold' },
   pickerBox: { borderRadius: 12, height: 50, justifyContent: 'center', overflow: 'hidden' },
   row: { flexDirection: 'row', gap: 10 },
-  saveBtn: { backgroundColor: '#2563eb', height: 60, borderRadius: 15, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 10 },
+  saveBtn: { 
+    backgroundColor: '#6366f1', 
+    height: 60, 
+    borderRadius: 15, 
+    flexDirection: 'row', 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    gap: 10, 
+    marginTop: 10,
+    shadowColor: '#6366f1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   saveBtnText: { color: '#fff', fontWeight: '900' }
 });
 

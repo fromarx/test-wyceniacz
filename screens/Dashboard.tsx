@@ -135,16 +135,31 @@ const Dashboard: React.FC = () => {
             shoppingLists.map(list => (
               <TouchableOpacity
                 key={list.id}
-                style={styles.listCard}
+                style={[
+                  styles.listCard,
+                  {
+                    backgroundColor: darkMode ? '#0f172a' : '#fff',
+                    borderWidth: 1,
+                    borderColor: darkMode ? '#1e293b' : '#e2e8f0'
+                  }
+                ]}
                 onPress={() => setActiveListId(list.id)}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.listTitle}>{list.name}</Text>
-                  <Text style={styles.listSub}>
+                  <Text style={[styles.listTitle, { color: darkMode ? '#f1f5f9' : '#0f172a' }]}>
+                    {list.name}
+                  </Text>
+                  <Text style={[styles.listSub, { color: darkMode ? '#94a3b8' : '#64748b' }]}>
                     {(list.items ?? []).length} pozycji
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => triggerDelete(list.id)}>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    triggerDelete(list.id);
+                  }}
+                  style={{ padding: 8 }}
+                >
                   <Trash2 size={18} color="#ef4444" />
                 </TouchableOpacity>
               </TouchableOpacity>
@@ -280,42 +295,143 @@ const ShoppingListDetail: React.FC<{
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={styles.detailHeader}>
-        <TouchableOpacity onPress={onBack}>
-          <ChevronLeft size={22} color="#64748b" />
+      <View style={[
+        styles.detailHeader,
+        { borderBottomColor: darkMode ? '#1e293b' : '#e2e8f0' }
+      ]}>
+        <TouchableOpacity 
+          onPress={onBack}
+          style={{ padding: 8 }}
+        >
+          <ChevronLeft size={24} color={darkMode ? '#94a3b8' : '#64748b'} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={onDelete}>
+        <Text style={[
+          styles.detailTitle, 
+          { 
+            color: darkMode ? '#f1f5f9' : '#0f172a',
+            marginBottom: 0,
+            fontSize: 20
+          }
+        ]}>
+          {list.name}
+        </Text>
+        <TouchableOpacity 
+          onPress={onDelete}
+          style={{ padding: 8 }}
+        >
           <Trash2 size={20} color="#ef4444" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
-        <Text style={[styles.detailTitle, { color: darkMode ? '#fff' : '#0f172a' }]}>
-          {list.name}
-        </Text>
-
-        <View style={styles.addRow}>
-          <TextInput placeholder="Produkt" value={name} onChangeText={setName} style={styles.smallInput} />
-          <TextInput placeholder="Ilość" value={qty} onChangeText={setQty} style={styles.smallInput} keyboardType="numeric" />
-          <TextInput placeholder="JM" value={unit} onChangeText={setUnit} style={styles.smallInput} />
-          <TouchableOpacity onPress={addItem}>
-            <Plus size={24} />
+      <ScrollView
+        contentContainerStyle={{ padding: 16 }}
+        style={{ backgroundColor: darkMode ? '#020617' : '#f8fafc' }}
+      >
+        <View style={[styles.addRow, { backgroundColor: darkMode ? '#0f172a' : '#f8fafc', padding: 12, borderRadius: 16 }]}>
+          <TextInput 
+            placeholder="Produkt" 
+            placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
+            value={name} 
+            onChangeText={setName} 
+            style={[
+              styles.smallInput, 
+              { 
+                backgroundColor: darkMode ? '#020617' : '#fff',
+                borderColor: darkMode ? '#1e293b' : '#e2e8f0',
+                color: darkMode ? '#f1f5f9' : '#0f172a'
+              }
+            ]} 
+          />
+          <TextInput 
+            placeholder="Ilość" 
+            placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
+            value={qty} 
+            onChangeText={setQty} 
+            style={[
+              styles.smallInput, 
+              { 
+                flex: 0.5,
+                backgroundColor: darkMode ? '#020617' : '#fff',
+                borderColor: darkMode ? '#1e293b' : '#e2e8f0',
+                color: darkMode ? '#f1f5f9' : '#0f172a'
+              }
+            ]} 
+            keyboardType="numeric" 
+          />
+          <TextInput 
+            placeholder="JM" 
+            placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
+            value={unit} 
+            onChangeText={setUnit} 
+            style={[
+              styles.smallInput, 
+              { 
+                flex: 0.5,
+                backgroundColor: darkMode ? '#020617' : '#fff',
+                borderColor: darkMode ? '#1e293b' : '#e2e8f0',
+                color: darkMode ? '#f1f5f9' : '#0f172a'
+              }
+            ]} 
+          />
+          <TouchableOpacity 
+            onPress={addItem}
+            style={{
+              backgroundColor: '#2563eb',
+              padding: 12,
+              borderRadius: 12,
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}
+          >
+            <Plus size={20} color="#fff" />
           </TouchableOpacity>
         </View>
 
-        {items.map(item => (
-          <View key={item.id} style={styles.itemRow}>
-            <TouchableOpacity onPress={() => toggle(item.id)}>
-              {item.isBought ? <CheckCircle2 color="#10b981" /> : <Circle />}
-            </TouchableOpacity>
-            <Text style={{ flex: 1, marginLeft: 10 }}>
-              {item.name} – {item.quantity} {item.unit}
+        {items.length === 0 ? (
+          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+            <Text style={{ color: darkMode ? '#64748b' : '#94a3b8', fontSize: 14 }}>
+              Brak pozycji na liście
             </Text>
-            <TouchableOpacity onPress={() => remove(item.id)}>
-              <X size={18} color="#ef4444" />
-            </TouchableOpacity>
           </View>
-        ))}
+        ) : (
+          items.map(item => (
+            <View 
+              key={item.id} 
+              style={[
+                styles.itemRow,
+                {
+                  backgroundColor: darkMode ? '#0f172a' : '#f8fafc',
+                  borderColor: darkMode ? '#1e293b' : '#e2e8f0',
+                  opacity: item.isBought ? 0.6 : 1
+                }
+              ]}
+            >
+              <TouchableOpacity onPress={() => toggle(item.id)} style={{ marginRight: 12 }}>
+                {item.isBought ? (
+                  <CheckCircle2 size={22} color="#10b981" />
+                ) : (
+                  <Circle size={22} color={darkMode ? '#475569' : '#cbd5e1'} />
+                )}
+              </TouchableOpacity>
+              <Text 
+                style={{ 
+                  flex: 1, 
+                  fontSize: 15,
+                  color: darkMode ? '#f1f5f9' : '#0f172a',
+                  textDecorationLine: item.isBought ? 'line-through' : 'none'
+                }}
+              >
+                {item.name} – {item.quantity} {item.unit}
+              </Text>
+              <TouchableOpacity 
+                onPress={() => remove(item.id)}
+                style={{ padding: 4 }}
+              >
+                <X size={18} color="#ef4444" />
+              </TouchableOpacity>
+            </View>
+          ))
+        )}
       </ScrollView>
     </View>
   );
@@ -331,11 +447,22 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   headerTitle: { fontSize: 26, fontWeight: '900' },
   addBtn: { backgroundColor: '#2563eb', padding: 14, borderRadius: 16 },
-  listCard: { backgroundColor: '#fff', padding: 18, borderRadius: 18, flexDirection: 'row', marginBottom: 12 },
-  listTitle: { fontSize: 18, fontWeight: '900' },
-  listSub: { fontSize: 12, color: '#64748b' },
-  empty: { alignItems: 'center', marginTop: 100 },
-  emptyText: { marginTop: 10, fontWeight: '900', color: '#94a3b8' },
+  listCard: { 
+    backgroundColor: '#fff', 
+    padding: 18, 
+    borderRadius: 18, 
+    flexDirection: 'row', 
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  listTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
+  listSub: { fontSize: 12, color: '#64748b', marginTop: 4 },
+  empty: { alignItems: 'center', marginTop: 100, paddingVertical: 40 },
+  emptyText: { marginTop: 10, fontWeight: '900', color: '#94a3b8', fontSize: 14 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', padding: 20 },
   modalCard: { borderRadius: 24, padding: 24 },
@@ -352,11 +479,40 @@ const styles = StyleSheet.create({
   dangerBtn: { backgroundColor: '#ef4444', padding: 14, borderRadius: 14, width: '100%' },
   dangerText: { color: '#fff', fontWeight: '900', textAlign: 'center' },
 
-  detailHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16 },
-  detailTitle: { fontSize: 24, fontWeight: '900', marginBottom: 16 },
-  addRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  smallInput: { borderWidth: 1, borderRadius: 10, padding: 8, flex: 1 },
-  itemRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 }
+  detailHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0'
+  },
+  detailTitle: { fontSize: 24, fontWeight: '900', marginBottom: 16, color: '#0f172a' },
+  addRow: { 
+    flexDirection: 'row', 
+    gap: 8, 
+    marginBottom: 16,
+    alignItems: 'center'
+  },
+  smallInput: { 
+    borderWidth: 1, 
+    borderColor: '#e2e8f0',
+    borderRadius: 12, 
+    padding: 12, 
+    flex: 1,
+    backgroundColor: '#fff',
+    fontSize: 14
+  },
+  itemRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0'
+  }
 });
 
 export default Dashboard;

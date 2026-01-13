@@ -14,11 +14,13 @@ import {
   Quote, QuoteItem, QuoteStatus, Service, UnitOfMeasure,
   MaterialMode, Client, MaterialItem
 } from '../types';
-import { PdfGenerator } from '../utils/PdfService'; // Upewnij się, że ścieżka jest poprawna
+import { PdfGenerator } from '../utils/PdfServiceMobile';
 
 type RootStackParamList = {
   NewQuote: { id?: string };
   QuoteDetails: { id: string };
+  MainTabs: { screen: string };
+  Quotes: undefined;
 };
 
 const NewQuote: React.FC = () => {
@@ -43,13 +45,11 @@ const NewQuote: React.FC = () => {
 
   const [selectedItems, setSelectedItems] = useState<QuoteItem[]>([]);
 
-  // Stan dla nowej usługi "z ręki"
   const [customService, setCustomService] = useState<Partial<QuoteItem>>({
     name: '', netPrice: 0, quantity: 1, unit: 'm2', vatRate: 8,
     materialMode: 'estimated', estimatedMaterialPrice: 0, materials: []
   });
 
-  // Stan dla pojedynczego materiału wewnątrz usługi
   const [tempMaterial, setTempMaterial] = useState<Partial<MaterialItem>>({
     name: '', price: 0, consumption: 1, unit: 'szt'
   });
@@ -103,7 +103,12 @@ const NewQuote: React.FC = () => {
     };
 
     setSelectedItems([...selectedItems, newItem]);
-    if (!s) setCustomService({ name: '', netPrice: 0, quantity: 1, unit: 'm2', vatRate: 8, materialMode: 'estimated', estimatedMaterialPrice: 0, materials: [] });
+    if (!s) {
+      setCustomService({ name: '', netPrice: 0, quantity: 1, unit: 'm2', vatRate: 8, materialMode: 'estimated', estimatedMaterialPrice: 0, materials: [] });
+      Alert.alert("Dodano", "Usługa została dodana do wyceny.");
+    } else {
+      Alert.alert("Dodano", `Usługa "${s.name}" została dodana.`);
+    }
   };
 
   // --- OBLICZENIA ---
@@ -127,6 +132,17 @@ const NewQuote: React.FC = () => {
   };
 
   const handleFinalSave = async () => {
+    if (!clientInfo.firstName || !clientInfo.phone || !clientInfo.serviceCity) {
+      Alert.alert('Błąd', 'Uzupełnij dane zleceniodawcy (imię, telefon, miejscowość).');
+      setStep(1);
+      return;
+    }
+    if (selectedItems.length === 0) {
+      Alert.alert('Błąd', 'Dodaj przynajmniej jedną usługę do wyceny.');
+      setStep(2);
+      return;
+    }
+
     const totals = getFinalTotals();
     const quoteData: Quote = {
       id: isEditMode ? id! : `q_${Date.now()}`,
@@ -142,11 +158,38 @@ const NewQuote: React.FC = () => {
       items: selectedItems, totalNet: totals.net, totalVat: totals.vat, totalGross: totals.gross
     };
 
-    if (isEditMode) updateQuote(quoteData);
-    else addQuote(quoteData);
+    try {
+      if (isEditMode) {
+        await updateQuote(quoteData);
+      } else {
+        await addQuote(quoteData);
+      }
 
-    await PdfGenerator.download(quoteData, user);
-    navigation.goBack();
+// screens/NewQuote.tsx (wewnątrz funkcji handleFinalSave, okolice linii 167-180)
+
+Alert.alert(
+  'Zapisano pomyślnie', 
+  'Wycena została zapisana. Czy chcesz teraz wygenerować i wysłać PDF?',
+  [
+    { 
+      text: 'Tylko zapisz', 
+      // ZMIANA PONIŻEJ:
+      onPress: () => navigation.navigate('MainTabs', { screen: 'Quotes' }) 
+    },
+    { 
+      text: 'Zapisz i wyślij PDF', 
+      onPress: async () => {
+        await PdfGenerator.download(quoteData, user);
+        // ZMIANA PONIŻEJ:
+        navigation.navigate('MainTabs', { screen: 'Quotes' });
+      } 
+    }
+  ]
+);
+    } catch (error) {
+      console.error('Save quote error:', error);
+      Alert.alert('Błąd', 'Nie udało się zapisać wyceny w bazie.');
+    }
   };
 
   return (
@@ -156,7 +199,7 @@ const NewQuote: React.FC = () => {
         {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : navigation.goBack()}>
-            <ChevronLeft color={darkMode ? '#fff' : '#64748b'} size={28} />
+            <ChevronLeft color={darkMode ? '#e2e8f0' : '#64748b'} size={28} />
           </TouchableOpacity>
           <View style={styles.stepIndicator}>
             {[1, 2, 3].map(s => (
@@ -179,11 +222,12 @@ const NewQuote: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <View style={[styles.card, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
+              <View style={[styles.card, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}>
                 <CustomInput label="Imię*" value={clientInfo.firstName} onChangeText={(v:any) => setClientInfo({...clientInfo, firstName: v})} darkMode={darkMode} />
                 <CustomInput label="Nazwisko*" value={clientInfo.lastName} onChangeText={(v:any) => setClientInfo({...clientInfo, lastName: v})} darkMode={darkMode} />
                 <CustomInput label="Telefon*" value={clientInfo.phone} onChangeText={(v:any) => setClientInfo({...clientInfo, phone: v})} darkMode={darkMode} keyboardType="phone-pad" />
-                <CustomInput label="Miejscowość" value={clientInfo.serviceCity} onChangeText={(v:any) => setClientInfo({...clientInfo, serviceCity: v})} darkMode={darkMode} />
+                <CustomInput label="Email (do wysyłki PDF)" value={clientInfo.email} onChangeText={(v:any) => setClientInfo({...clientInfo, email: v})} darkMode={darkMode} keyboardType="email-address" autoCapitalize="none" />
+                <CustomInput label="Miejscowość*" value={clientInfo.serviceCity} onChangeText={(v:any) => setClientInfo({...clientInfo, serviceCity: v})} darkMode={darkMode} />
 
                 {!clientInfo.clientId && clientInfo.firstName && (
                   <TouchableOpacity style={styles.outlineAction} onPress={saveClientToDb}>
@@ -200,12 +244,30 @@ const NewQuote: React.FC = () => {
             <View style={styles.stepContainer}>
               <Text style={[styles.sectionTitle, { color: darkMode ? '#f1f5f9' : '#1e293b' }]}>Usługi i Materiały</Text>
 
-              <View style={[styles.card, { backgroundColor: darkMode ? '#1e293b' : '#eff6ff', borderColor: '#3b82f6' }]}>
+              <View style={[styles.card, { backgroundColor: darkMode ? '#0f172a' : '#eff6ff', borderColor: darkMode ? '#3b82f6' : '#3b82f6' }]}>
                 <Text style={styles.cardLabel}>DODAJ USŁUGĘ "Z RĘKI"</Text>
-                <TextInput placeholder="Nazwa usługi..." style={styles.simpleInput} value={customService.name} onChangeText={v => setCustomService({...customService, name: v})} />
+                <TextInput 
+                  placeholder="Nazwa usługi..." 
+                  placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
+                  style={[styles.simpleInput, { backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                  value={customService.name} 
+                  onChangeText={v => setCustomService({...customService, name: v})} 
+                />
                 <View style={styles.row}>
-                  <TextInput placeholder="Cena netto" style={[styles.simpleInput, { flex: 2, marginRight: 10 }]} keyboardType="numeric" onChangeText={v => setCustomService({...customService, netPrice: Number(v)})} />
-                  <TextInput placeholder="jm" style={[styles.simpleInput, { flex: 1 }]} value={customService.unit} onChangeText={v => setCustomService({...customService, unit: v as any})} />
+                  <TextInput 
+                    placeholder="Cena netto" 
+                    placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
+                    style={[styles.simpleInput, { flex: 2, marginRight: 10, backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                    keyboardType="numeric" 
+                    onChangeText={v => setCustomService({...customService, netPrice: Number(v)})} 
+                  />
+                  <TextInput 
+                    placeholder="jm" 
+                    placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
+                    style={[styles.simpleInput, { flex: 1, backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                    value={customService.unit} 
+                    onChangeText={v => setCustomService({...customService, unit: v as any})} 
+                  />
                 </View>
 
                 <View style={styles.modeToggle}>
@@ -218,19 +280,45 @@ const NewQuote: React.FC = () => {
                 </View>
 
                 {customService.materialMode === 'estimated' ? (
-                  <TextInput placeholder="Cena materiału na jm" style={styles.simpleInput} keyboardType="numeric" onChangeText={v => setCustomService({...customService, estimatedMaterialPrice: Number(v)})} />
+                  <TextInput 
+                    placeholder="Cena materiału na jm" 
+                    placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
+                    style={[styles.simpleInput, { backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                    keyboardType="numeric" 
+                    onChangeText={v => setCustomService({...customService, estimatedMaterialPrice: Number(v)})} 
+                  />
                 ) : (
-                  <View style={styles.innerCard}>
-                    <TextInput placeholder="Nazwa materiału" style={styles.simpleInput} value={tempMaterial.name} onChangeText={v => setTempMaterial({...tempMaterial, name: v})} />
+                  <View style={[styles.innerCard, { backgroundColor: darkMode ? '#1e293b' : '#f1f5f9' }]}>
+                    <TextInput 
+                      placeholder="Nazwa materiału" 
+                      placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
+                      style={[styles.simpleInput, { backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                      value={tempMaterial.name} 
+                      onChangeText={v => setTempMaterial({...tempMaterial, name: v})} 
+                    />
                     <View style={styles.row}>
-                      <TextInput placeholder="Cena" style={[styles.simpleInput, { flex: 1, marginRight: 5 }]} keyboardType="numeric" value={tempMaterial.price?.toString()} onChangeText={v => setTempMaterial({...tempMaterial, price: Number(v)})} />
-                      <TextInput placeholder="Zużycie/jm" style={[styles.simpleInput, { flex: 1 }]} keyboardType="numeric" value={tempMaterial.consumption?.toString()} onChangeText={v => setTempMaterial({...tempMaterial, consumption: Number(v)})} />
+                      <TextInput 
+                        placeholder="Cena" 
+                        placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
+                        style={[styles.simpleInput, { flex: 1, marginRight: 5, backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                        keyboardType="numeric" 
+                        value={tempMaterial.price?.toString()} 
+                        onChangeText={v => setTempMaterial({...tempMaterial, price: Number(v)})} 
+                      />
+                      <TextInput 
+                        placeholder="Zużycie/jm" 
+                        placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
+                        style={[styles.simpleInput, { flex: 1, backgroundColor: darkMode ? '#020617' : '#fff', color: darkMode ? '#fff' : '#000', borderColor: darkMode ? '#1e293b' : '#d1d5db' }]} 
+                        keyboardType="numeric" 
+                        value={tempMaterial.consumption?.toString()} 
+                        onChangeText={v => setTempMaterial({...tempMaterial, consumption: Number(v)})} 
+                      />
                     </View>
                     <TouchableOpacity style={styles.addMatBtn} onPress={addMaterialToCustom}>
                       <Plus size={14} color="#fff" />
                       <Text style={styles.addMatBtnText}>DODAJ MATERIAŁ</Text>
                     </TouchableOpacity>
-                    {customService.materials?.map(m => <Text key={m.id} style={styles.matListText}>• {m.name} ({m.price}zł x {m.consumption})</Text>)}
+                    {customService.materials?.map(m => <Text key={m.id} style={[styles.matListText, { color: darkMode ? '#94a3b8' : '#475569' }]}>• {m.name} ({m.price}zł x {m.consumption})</Text>)}
                   </View>
                 )}
 
@@ -239,9 +327,9 @@ const NewQuote: React.FC = () => {
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.cardLabel}>LUB WYBIERZ Z KATALOGU</Text>
+              <Text style={[styles.cardLabel, { marginTop: 10 }]}>LUB WYBIERZ Z KATALOGU</Text>
               {services.map(s => (
-                <TouchableOpacity key={s.id} onPress={() => addServiceToQuote(s)} style={[styles.serviceItem, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
+                <TouchableOpacity key={s.id} onPress={() => addServiceToQuote(s)} style={[styles.serviceItem, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}>
                   <Text style={{ color: darkMode ? '#cbd5e1' : '#334155', flex: 1, fontWeight: 'bold' }}>{s.name}</Text>
                   <Plus size={20} color="#2563eb" />
                 </TouchableOpacity>
@@ -257,18 +345,18 @@ const NewQuote: React.FC = () => {
               {selectedItems.map((item, idx) => {
                 const res = calculateItemTotal(item);
                 return (
-                  <View key={item.id} style={[styles.summaryItem, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
+                  <View key={item.id} style={[styles.summaryItem, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#e2e8f0' }]}>
                     <View style={styles.rowBetween}>
-                      <Text style={styles.sumName}>{idx+1}. {item.name}</Text>
+                      <Text style={[styles.sumName, { color: darkMode ? '#f1f5f9' : '#000' }]}>{idx+1}. {item.name}</Text>
                       <TouchableOpacity onPress={() => setSelectedItems(selectedItems.filter(i => i.id !== item.id))}>
                         <Trash2 size={18} color="#ef4444" />
                       </TouchableOpacity>
                     </View>
 
                     <View style={styles.sumDetailRow}>
-                      <Text style={styles.sumLabel}>Ilość (metraż):</Text>
+                      <Text style={[styles.sumLabel, { color: darkMode ? '#94a3b8' : '#64748b' }]}>Ilość (metraż):</Text>
                       <TextInput
-                        style={styles.sumInput}
+                        style={[styles.sumInput, { color: darkMode ? '#fff' : '#000', borderBottomColor: '#2563eb' }]}
                         keyboardType="numeric"
                         value={item.quantity.toString()}
                         onChangeText={v => {
@@ -277,7 +365,7 @@ const NewQuote: React.FC = () => {
                           setSelectedItems(newItems);
                         }}
                       />
-                      <Text style={styles.sumLabel}>{item.unit}</Text>
+                      <Text style={[styles.sumLabel, { color: darkMode ? '#94a3b8' : '#64748b' }]}>{item.unit}</Text>
                     </View>
 
                     <View style={styles.sumInfoRow}>
@@ -289,7 +377,7 @@ const NewQuote: React.FC = () => {
                 );
               })}
 
-              <View style={styles.totalBox}>
+              <View style={[styles.totalBox, { backgroundColor: darkMode ? '#0f172a' : '#1e293b' }]}>
                 <Text style={styles.totalLabel}>ŁĄCZNIE DO ZAPŁATY (BRUTTO)</Text>
                 <Text style={styles.totalValue}>{getFinalTotals().gross.toLocaleString()} zł</Text>
               </View>
@@ -299,17 +387,33 @@ const NewQuote: React.FC = () => {
         </ScrollView>
 
         {/* STOPKA NAWIGACJI */}
-        <View style={styles.footer}>
+        <View style={[styles.footer, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderTopColor: darkMode ? '#1e293b' : '#e2e8f0', borderTopWidth: 1 }]}>
           {step > 1 && (
-             <TouchableOpacity style={[styles.navBtn, styles.navBtnBack]} onPress={() => setStep(step - 1)}>
-              <ChevronLeft color="#64748b" />
-              <Text style={styles.navBtnBackText}>WSTECZ</Text>
+             <TouchableOpacity style={[styles.navBtn, styles.navBtnBack, { backgroundColor: darkMode ? '#1e293b' : '#f1f5f9' }]} onPress={() => setStep(step - 1)}>
+              <ChevronLeft color={darkMode ? '#cbd5e1' : '#64748b'} />
+              <Text style={[styles.navBtnBackText, { color: darkMode ? '#cbd5e1' : '#64748b' }]}>WSTECZ</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
             style={[styles.navBtn, styles.navBtnNext, step === 3 && { backgroundColor: '#10b981' }]}
-            onPress={() => step < 3 ? setStep(step + 1) : handleFinalSave()}
+            onPress={() => {
+                if (step === 1) {
+                    if (!clientInfo.firstName || !clientInfo.phone || !clientInfo.serviceCity) {
+                        Alert.alert('Błąd', 'Uzupełnij wymagane pola klienta.');
+                        return;
+                    }
+                    setStep(2);
+                } else if (step === 2) {
+                    if (selectedItems.length === 0) {
+                        Alert.alert('Błąd', 'Dodaj przynajmniej jedną usługę.');
+                        return;
+                    }
+                    setStep(3);
+                } else {
+                    handleFinalSave();
+                }
+            }}
           >
             <Text style={styles.navBtnNextText}>{step === 3 ? 'ZAPISZ I GENERUJ PDF' : 'DALEJ'}</Text>
             {step < 3 && <ChevronRight color="#fff" />}
@@ -325,7 +429,7 @@ const NewQuote: React.FC = () => {
             </View>
             <ScrollView>
               {clients.map(c => (
-                <TouchableOpacity key={c.id} style={styles.clientPickerItem} onPress={() => handleSelectClient(c)}>
+                <TouchableOpacity key={c.id} style={[styles.clientPickerItem, { borderBottomColor: darkMode ? '#1e293b' : '#f1f5f9' }]} onPress={() => handleSelectClient(c)}>
                   <Briefcase size={20} color="#64748b" />
                   <View style={{ marginLeft: 12 }}>
                     <Text style={{ fontWeight: 'bold', color: darkMode ? '#fff' : '#000' }}>{c.firstName} {c.lastName}</Text>
@@ -343,8 +447,12 @@ const NewQuote: React.FC = () => {
 
 const CustomInput = ({ label, darkMode, ...props }: any) => (
   <View style={styles.inputWrapper}>
-    <Text style={[styles.label, { color: darkMode ? '#64748b' : '#94a3b8' }]}>{label}</Text>
-    <TextInput style={[styles.input, { color: darkMode ? '#fff' : '#000', borderBottomColor: darkMode ? '#1e293b' : '#e2e8f0' }]} {...props} />
+    <Text style={[styles.label, { color: darkMode ? '#94a3b8' : '#94a3b8' }]}>{label}</Text>
+    <TextInput 
+      style={[styles.input, { color: darkMode ? '#fff' : '#000', borderBottomColor: darkMode ? '#1e293b' : '#e2e8f0' }]} 
+      placeholderTextColor={darkMode ? '#475569' : '#cbd5e1'}
+      {...props} 
+    />
   </View>
 );
 
@@ -354,49 +462,49 @@ const styles = StyleSheet.create({
   stepIndicator: { flexDirection: 'row', gap: 8 },
   stepDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#e2e8f0' },
   stepDotActive: { backgroundColor: '#2563eb', width: 20 },
-  scrollContent: { padding: 16, paddingBottom: 100 },
+  scrollContent: { padding: 16, paddingBottom: 120 },
   stepContainer: { gap: 20 },
   sectionTitle: { fontSize: 26, fontWeight: '900' },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   row: { flexDirection: 'row', alignItems: 'center' },
-  card: { borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#e2e8f0', elevation: 2 },
+  card: { borderRadius: 24, padding: 20, borderWidth: 1, elevation: 2 },
   cardLabel: { fontSize: 10, fontWeight: '900', color: '#3b82f6', marginBottom: 10, letterSpacing: 1 },
   inputWrapper: { marginBottom: 15 },
   label: { fontSize: 10, fontWeight: 'bold', marginBottom: 5 },
   input: { height: 45, borderBottomWidth: 1, fontSize: 16 },
-  simpleInput: { height: 48, backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 15, marginBottom: 12, borderWidth: 1, borderColor: '#d1d5db', fontSize: 14 },
+  simpleInput: { height: 48, borderRadius: 12, paddingHorizontal: 15, marginBottom: 12, borderWidth: 1, fontSize: 14 },
   modeToggle: { flexDirection: 'row', gap: 10, marginBottom: 15 },
   modeBtn: { flex: 1, padding: 12, borderRadius: 12, backgroundColor: '#cbd5e1', alignItems: 'center' },
   modeBtnActive: { backgroundColor: '#2563eb' },
   modeBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 10 },
-  innerCard: { backgroundColor: '#f1f5f9', padding: 15, borderRadius: 16, marginBottom: 10 },
+  innerCard: { padding: 15, borderRadius: 16, marginBottom: 10 },
   addMatBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#64748b', padding: 10, borderRadius: 10, alignSelf: 'flex-start' },
   addMatBtnText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  matListText: { fontSize: 11, color: '#475569', marginTop: 5, fontStyle: 'italic' },
+  matListText: { fontSize: 11, marginTop: 5, fontStyle: 'italic' },
   addServiceBtn: { backgroundColor: '#2563eb', padding: 16, borderRadius: 15, alignItems: 'center', marginTop: 10 },
   addServiceBtnText: { color: '#fff', fontWeight: 'bold' },
-  serviceItem: { flexDirection: 'row', padding: 18, borderRadius: 18, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0' },
-  summaryItem: { padding: 20, borderRadius: 24, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0' },
+  serviceItem: { flexDirection: 'row', padding: 18, borderRadius: 18, marginBottom: 10, borderWidth: 1 },
+  summaryItem: { padding: 20, borderRadius: 24, marginBottom: 12, borderWidth: 1 },
   sumName: { fontSize: 16, fontWeight: 'bold' },
   sumDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 15 },
-  sumInput: { width: 60, height: 40, borderBottomWidth: 2, borderBottomColor: '#2563eb', textAlign: 'center', fontWeight: 'bold', fontSize: 16 },
-  sumLabel: { color: '#64748b', fontWeight: 'bold' },
+  sumInput: { width: 60, height: 40, borderBottomWidth: 2, textAlign: 'center', fontWeight: 'bold', fontSize: 16 },
+  sumLabel: { fontWeight: 'bold' },
   sumInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
   sumSubLabel: { fontSize: 11, color: '#94a3b8' },
   sumTotal: { fontSize: 16, fontWeight: '900', color: '#2563eb', marginTop: 10, textAlign: 'right' },
-  totalBox: { padding: 30, backgroundColor: '#1e293b', borderRadius: 28, alignItems: 'center', marginVertical: 20 },
+  totalBox: { padding: 30, borderRadius: 28, alignItems: 'center', marginVertical: 20 },
   totalLabel: { color: '#94a3b8', fontSize: 11, fontWeight: 'bold', letterSpacing: 1 },
   totalValue: { color: '#fff', fontSize: 36, fontWeight: '900', marginTop: 8 },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: 'rgba(255,255,255,0.9)', flexDirection: 'row', gap: 10 },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, flexDirection: 'row', gap: 10 },
   navBtn: { flex: 2, height: 60, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
-  navBtnBack: { flex: 1, backgroundColor: '#f1f5f9' },
+  navBtnBack: { flex: 1 },
   navBtnNext: { backgroundColor: '#2563eb' },
-  navBtnBackText: { color: '#64748b', fontWeight: 'bold' },
+  navBtnBackText: { fontWeight: 'bold' },
   navBtnNextText: { color: '#fff', fontWeight: '900' },
   modalContent: { flex: 1, padding: 20, paddingTop: 50 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
   modalTitle: { fontSize: 22, fontWeight: '900' },
-  clientPickerItem: { flexDirection: 'row', alignItems: 'center', padding: 18, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  clientPickerItem: { flexDirection: 'row', alignItems: 'center', padding: 18, borderBottomWidth: 1 },
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   linkBtnText: { color: '#2563eb', fontWeight: 'bold', fontSize: 12 },
   outlineAction: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 15, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#2563eb', borderStyle: 'dashed' },

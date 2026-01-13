@@ -10,6 +10,7 @@ import React, {
 import { Platform, View, ActivityIndicator, Text, StyleSheet, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
+import * as Notifications from 'expo-notifications';
 
 import PaywallScreen from '../components/PaywallScreen';
 import { initDatabase, getDbConnection } from '../db/db';
@@ -40,14 +41,53 @@ const executeSql = async <T,>(sql: string, params: any[] = []): Promise<T[]> => 
 };
 
 const upsert = async (table: string, item: any) => {
-  const keys = Object.keys(item);
-  const assignments = keys.map(k => `${k}=excluded.${k}`).join(',');
+  // Serializuj tablice i obiekty do JSON przed zapisem
+  const serializedItem: any = { ...item };
+  
+  if (table === 'services') {
+    if (serializedItem.defaultMaterials) {
+      serializedItem.defaultMaterials = JSON.stringify(serializedItem.defaultMaterials);
+    }
+  }
+  
+  if (table === 'clients') {
+    if (serializedItem.reminders) {
+      serializedItem.reminders = JSON.stringify(serializedItem.reminders);
+    }
+  }
+
+  if (table === 'quotes') {
+    // FIX: Sprawdzamy czy items to tablica zanim zrobimy stringify
+    if (serializedItem.items && typeof serializedItem.items !== 'string') {
+      serializedItem.items = JSON.stringify(serializedItem.items);
+    }
+  }
+
+  const keys = Object.keys(serializedItem);
   const placeholders = keys.map(() => '?').join(',');
 
   await executeSql(
       `INSERT OR REPLACE INTO ${table} (${keys.join(',')}) VALUES (${placeholders})`,
-      Object.values(item)
+      Object.values(serializedItem)
     );
+};
+
+// Helper do bezpiecznego parsowania JSON (naprawia problem "podwójnego stringa")
+const safeParseJSON = (input: any) => {
+  try {
+    if (!input) return [];
+    if (Array.isArray(input)) return input;
+    if (typeof input === 'string') {
+      const parsed = JSON.parse(input);
+      // Jeśli po pierwszym parsowaniu to nadal string, parsujemy drugi raz (fix dla double stringify)
+      if (typeof parsed === 'string') return JSON.parse(parsed);
+      return parsed;
+    }
+    return [];
+  } catch (e) {
+    console.warn("Błąd parsowania JSON:", e);
+    return [];
+  }
 };
 
 /* ============================= */
@@ -75,6 +115,8 @@ interface AppContextType {
   updateShoppingList(l: ShoppingList): Promise<void>;
   deleteShoppingList(id: string): Promise<void>;
   retrySubscriptionCheck(): Promise<void>;
+  requestNotificationPermission(): Promise<void>;
+  exportAllData(): Promise<string>;
 }
 
 const initialState: AppState = {
@@ -107,12 +149,29 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
   const checkSubscription = useCallback(async (): Promise<SubscriptionStatus> => {
     try {
-      if (!(await Purchases.isConfigured())) return SubscriptionStatus.NONE;
+      const devMode = __DEV__ || process.env.NODE_ENV === 'development';
+      if (devMode) {
+        console.log('[DEV] Pomijanie sprawdzania subskrypcji - tryb deweloperski');
+        return SubscriptionStatus.ACTIVE;
+      }
+
+      if (!(await Purchases.isConfigured())) {
+        console.log('[RevenueCat] Nie skonfigurowano');
+        return SubscriptionStatus.NONE;
+      }
+      
       const info: CustomerInfo = await Purchases.getCustomerInfo();
-      return info.entitlements.active['Fromed Pro']
+      const hasActiveSubscription = !!info.entitlements.active['Fromed Pro'];
+      console.log('[RevenueCat] Status subskrypcji:', hasActiveSubscription ? 'ACTIVE' : 'NONE');
+      
+      return hasActiveSubscription
         ? SubscriptionStatus.ACTIVE
         : SubscriptionStatus.NONE;
-    } catch {
+    } catch (error) {
+      console.error('[RevenueCat] Błąd sprawdzania subskrypcji:', error);
+      if (__DEV__) {
+        return SubscriptionStatus.ACTIVE;
+      }
       return SubscriptionStatus.NONE;
     }
   }, []);
@@ -141,20 +200,33 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
         const [
           userRaw,
           darkModeRaw,
-          quotes,
-          services,
+          quotesRaw,
+          servicesRaw,
           categoriesRaw,
-          clients,
+          clientsRaw,
           shoppingListsRaw
         ] = await Promise.all([
           AsyncStorage.getItem('user'),
           AsyncStorage.getItem('darkMode'),
-          db.getAllAsync<Quote>('SELECT * FROM quotes ORDER BY date DESC LIMIT ?', [QUOTES_PER_PAGE]),
-          db.getAllAsync<Service>('SELECT * FROM services'),
+          db.getAllAsync<any>('SELECT * FROM quotes ORDER BY date DESC LIMIT ?', [QUOTES_PER_PAGE]),
+          db.getAllAsync<any>('SELECT * FROM services'),
           db.getAllAsync<Category>('SELECT * FROM categories'),
-          db.getAllAsync<Client>('SELECT * FROM clients'),
+          db.getAllAsync<any>('SELECT * FROM clients'),
           db.getAllAsync<any>('SELECT * FROM shoppingLists')
         ]);
+
+        // Deserializuj JSON z bazy danych
+        const quotes: Quote[] = (quotesRaw || []).map(mapQuoteFromDb);
+
+        const services: Service[] = (servicesRaw || []).map((s: any) => ({
+          ...s,
+          defaultMaterials: safeParseJSON(s.defaultMaterials)
+        }));
+
+        const clients: Client[] = (clientsRaw || []).map((c: any) => ({
+          ...c,
+          reminders: safeParseJSON(c.reminders)
+        }));
 
         let categories = categoriesRaw || [];
         if (!categories.some(c => c.name.toLowerCase() === 'ogólna')) {
@@ -168,11 +240,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
         const shoppingLists: ShoppingList[] = (shoppingListsRaw || []).map(l => ({
           ...l,
-          items: typeof l.items === 'string'
-                     ? JSON.parse(l.items)
-                     : Array.isArray(l.items)
-                     ? l.items
-                     : []
+          items: safeParseJSON(l.items)
         }));
 
         if (mounted) {
@@ -214,6 +282,54 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   /* ===== QUOTES =============== */
   /* ============================= */
 
+  const mapQuoteToDb = (q: Quote) => ({
+    id: q.id,
+    number: q.number,
+    date: q.date,
+    clientId: q.clientId,
+    clientFirstName: q.clientFirstName,
+    clientLastName: q.clientLastName,
+    clientPhone: q.clientPhone,
+    clientEmail: q.clientEmail,
+    clientCompany: q.clientCompany,
+    clientNip: q.clientNip,
+    serviceStreet: q.serviceStreet,
+    serviceHouseNo: q.serviceHouseNo,
+    serviceApartmentNo: q.serviceApartmentNo,
+    servicePostalCode: q.servicePostalCode,
+    serviceCity: q.serviceCity,
+    status: q.status,
+    totalNet: q.totalNet,
+    totalVat: q.totalVat,
+    totalGross: q.totalGross,
+    // FIX: Używamy items jako stringa tylko raz
+    items: typeof q.items === 'string' ? q.items : JSON.stringify(q.items ?? []),
+  });
+
+  const mapQuoteFromDb = (row: any): Quote => ({
+    id: row.id,
+    number: row.number,
+    date: row.date,
+    clientId: row.clientId,
+    clientFirstName: row.clientFirstName,
+    clientLastName: row.clientLastName,
+    clientPhone: row.clientPhone,
+    clientEmail: row.clientEmail,
+    clientCompany: row.clientCompany,
+    clientNip: row.clientNip,
+    serviceStreet: row.serviceStreet,
+    serviceHouseNo: row.serviceHouseNo || row.houseNo,
+    serviceApartmentNo: row.serviceApartmentNo || row.apartmentNo,
+    servicePostalCode: row.servicePostalCode || row.postalCode,
+    serviceCity: row.serviceCity || row.city,
+    status: row.status,
+    totalNet: row.totalNet,
+    totalVat: row.totalVat,
+    totalGross: row.totalGross,
+    // FIX: Używamy helpera safeParseJSON
+    items: safeParseJSON(row.items),
+  });
+
   const mapListToDb = (l: ShoppingList) => ({
     id: l.id,
     name: l.name,
@@ -228,10 +344,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
 
       try {
         const offset = page * QUOTES_PER_PAGE;
-        const rows = await executeSql<Quote>(
+        const rowsRaw = await executeSql<any>(
           'SELECT * FROM quotes ORDER BY date DESC LIMIT ? OFFSET ?',
           [QUOTES_PER_PAGE, offset]
         );
+
+        const rows: Quote[] = (rowsRaw || []).map(mapQuoteFromDb);
 
         setState(s => ({
           ...s,
@@ -264,12 +382,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addQuote = async (q: Quote) => {
-    await upsert('quotes', q);
+    const dbItem = mapQuoteToDb(q);
+    await upsert('quotes', dbItem);
     setState(s => ({ ...s, quotes: [q, ...s.quotes] }));
   };
 
   const updateQuote = async (q: Quote) => {
-    await upsert('quotes', q);
+    const dbItem = mapQuoteToDb(q);
+    await upsert('quotes', dbItem);
     setState(s => ({ ...s, quotes: s.quotes.map(x => (x.id === q.id ? q : x)) }));
   };
 
@@ -362,6 +482,41 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setState(s => ({ ...s, subscriptionStatus: SubscriptionStatus.NONE }));
   };
 
+  const requestNotificationPermission = async () => {
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert("Uprawnienia", "Włącz powiadomienia w ustawieniach, aby otrzymywać przypomnienia.");
+    }
+  };
+
+  const exportAllData = async (): Promise<string> => {
+    const db = await getDbConnection();
+    const [quotes, services, categories, clients, shoppingListsRaw] = await Promise.all([
+      db.getAllAsync<Quote>('SELECT * FROM quotes'),
+      db.getAllAsync<Service>('SELECT * FROM services'),
+      db.getAllAsync<Category>('SELECT * FROM categories'),
+      db.getAllAsync<Client>('SELECT * FROM clients'),
+      db.getAllAsync<any>('SELECT * FROM shoppingLists')
+    ]);
+
+    const shoppingLists: ShoppingList[] = (shoppingListsRaw || []).map(l => ({
+      ...l,
+      items: safeParseJSON(l.items)
+    }));
+
+    const exportData = {
+      user: state.user,
+      quotes,
+      services,
+      categories,
+      clients,
+      shoppingLists,
+      exportDate: new Date().toISOString()
+    };
+
+    return JSON.stringify(exportData, null, 2);
+  };
+
   const value = useMemo<AppContextType>(
     () => ({
       state,
@@ -384,12 +539,12 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       addShoppingList,
       updateShoppingList,
       deleteShoppingList,
-      retrySubscriptionCheck
+      retrySubscriptionCheck,
+      requestNotificationPermission,
+      exportAllData
     }),
     [state]
   );
-
-
 
   /* ============================= */
   /* ===== RENDER =============== */

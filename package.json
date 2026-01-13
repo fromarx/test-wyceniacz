@@ -6,8 +6,11 @@
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
+    "android:studio": "expo prebuild && echo 'Otwórz folder android/ w Android Studio'",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "prebuild": "expo prebuild",
+    "prebuild:clean": "expo prebuild --clean"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -24,8 +27,10 @@
     "expo-dev-client": "~6.0.20",
     "expo-file-system": "~19.0.21",
     "expo-image-picker": "~17.0.10",
+    "expo-mail-composer": "~15.0.8",
     "expo-navigation-bar": "~5.0.10",
     "expo-notifications": "~0.32.16",
+    "expo-print": "~14.0.3",
     "expo-sharing": "~14.0.8",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
@@ -43,8 +48,6 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@types/react": "~19.1.10",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "typescript": "~5.8.2"
   }
 }

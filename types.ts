@@ -53,6 +53,7 @@ export interface ClientReminder {
   date: string;
   time: string; // HH:mm
   topic: string;
+  note?: string;
   completed: boolean;
   notified?: boolean; 
 }
@@ -149,6 +150,6 @@ export interface AppState {
   darkMode: boolean;
   activeScreenName: string;
   subscriptionStatus: SubscriptionStatus;
-  hasMoreQuotes: boolean,
-  currentQuotesPage: number
+  hasMoreQuotes: boolean;
+  currentQuotesPage: number;
 }

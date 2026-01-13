@@ -17,11 +17,13 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useAppContext } from '../store/AppContext';
 import { 
-  Save, Building2, User as UserIcon, MapPin, Hash, Mail, 
+  Save, Building2, User as UserIcon, MapPin, Hash, Mail,
+  ChevronLeft, 
   CheckCircle2, AlertCircle, Edit3, X, Zap, Trash2, 
   Phone, Moon, Sun, BellRing, Settings, Upload, 
   Database, Download, Palette, FileText 
 } from 'lucide-react-native';
+
 import { User, SubscriptionStatus } from '../types';
 
 interface ProfileProps {
@@ -116,6 +118,33 @@ useEffect(() => {
       style={[styles.container, { backgroundColor: darkMode ? '#020617' : '#f8fafc' }]}
       contentContainerStyle={{ paddingBottom: 100 }}
     >
+      {/* --- TUTAJ WSTAW NOWY KOD --- */}
+      {!forced && (
+        <TouchableOpacity 
+          onPress={() => navigation.goBack()}
+          style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            padding: 16, 
+            marginBottom: 8,
+            backgroundColor: darkMode ? '#0f172a' : '#fff',
+            borderBottomWidth: 1,
+            borderBottomColor: darkMode ? '#1e293b' : '#e2e8f0'
+          }}
+        >
+          <ChevronLeft size={24} color={darkMode ? '#fff' : '#0f172a'} />
+          <Text style={{ 
+            color: darkMode ? '#fff' : '#0f172a', 
+            fontWeight: 'bold', 
+            marginLeft: 8,
+            fontSize: 14
+          }}>
+            POWRÓT DO DASHBOARDU
+          </Text>
+        </TouchableOpacity>
+      )}
+      {/* --- KONIEC WSTAWIANIA --- */}
+
       {forced && (
         <View style={styles.forcedAlert}>
           <AlertCircle color="#fff" size={20} />
