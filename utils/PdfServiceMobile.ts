@@ -2,35 +2,40 @@ import { Quote, User } from '../types';
 import { PdfTemplate } from './PDFTemplate';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as MailComposer from 'expo-mail-composer';
+import { Alert, Platform } from 'react-native';
 
 export class PdfGenerator {
   static async generateAndShare(quote: Quote, user: User | null): Promise<void> {
     try {
+      // 1. Generuj HTML
       const html = PdfTemplate.build(quote, user);
       
+      // 2. Generuj plik PDF
       const { uri } = await Print.printToFileAsync({
         html,
         base64: false,
       });
 
-      const isMailAvailable = await MailComposer.isAvailableAsync();
+      console.log('PDF wygenerowany:', uri);
 
-      if (isMailAvailable && quote.clientEmail) {
-        // Jeśli mamy maila klienta, otwórz okno maila z załącznikiem i tytułem
-        await MailComposer.composeAsync({
-          recipients: [quote.clientEmail],
-          subject: `Wycena nr ${quote.number} - ${quote.clientFirstName} ${quote.clientLastName}`,
-          body: `Dzień dobry,\n\nw załączeniu przesyłam przygotowaną wycenę prac.\n\nZ poważaniem,\n${user?.firstName} ${user?.lastName}\n${user?.companyName}`,
-          attachments: [uri],
+      // 3. Sprawdź czy można udostępnić
+      const canShare = await Sharing.isAvailableAsync();
+      
+      if (canShare) {
+        // Używamy natywnego menu udostępniania
+        // To powinno pokazać Gmaila, WhatsApp, Dysk itp.
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf', // Ważne dla Androida
+          UTI: 'com.adobe.pdf',       // Ważne dla iOS
+          dialogTitle: `Wycena ${quote.number}`
         });
       } else {
-        // Fallback do ogólnego udostępniania
-        await Sharing.shareAsync(uri);
+        Alert.alert("Błąd", "Twoje urządzenie nie wspiera udostępniania plików.");
       }
+
     } catch (error) {
-      console.error('Błąd PDF/Mail:', error);
-      throw error;
+      console.error('Błąd PDF:', error);
+      Alert.alert('Błąd', 'Nie udało się wygenerować pliku PDF.');
     }
   }
 
