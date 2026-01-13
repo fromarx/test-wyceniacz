@@ -149,32 +149,24 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setState(prev => ({ ...prev, activeScreenName: name }));
   }, []);
 
-  const checkSubscription = useCallback(async (): Promise<SubscriptionStatus> => {
-    try {
-      const devMode = __DEV__ || process.env.NODE_ENV === 'development';
+const checkSubscription = useCallback(async (): Promise<SubscriptionStatus> => {
+    // 👇 Najpierw sprawdzamy tryb wymuszony (zanim wejdziemy w try-catch)
     if (FORCE_DEV_MODE) {
         console.log("FORCE DEV MODE: Subskrypcja aktywna");
         return SubscriptionStatus.ACTIVE;
     }
-      }
 
+    // 👇 Dopiero potem ewentualnie RevenueCat (w trybie produkcji)
+    try {
       if (!(await Purchases.isConfigured())) {
-        console.log('[RevenueCat] Nie skonfigurowano');
         return SubscriptionStatus.NONE;
       }
-      
       const info: CustomerInfo = await Purchases.getCustomerInfo();
-      const hasActiveSubscription = !!info.entitlements.active['Fromed Pro'];
-      console.log('[RevenueCat] Status subskrypcji:', hasActiveSubscription ? 'ACTIVE' : 'NONE');
-      
-      return hasActiveSubscription
+      return info.entitlements.active['Fromed Pro']
         ? SubscriptionStatus.ACTIVE
         : SubscriptionStatus.NONE;
-    } catch (error) {
-      console.error('[RevenueCat] Błąd sprawdzania subskrypcji:', error);
-      if (__DEV__) {
-        return SubscriptionStatus.ACTIVE;
-      }
+    } catch (e) {
+      console.warn("Błąd sprawdzania subskrypcji:", e);
       return SubscriptionStatus.NONE;
     }
   }, []);
