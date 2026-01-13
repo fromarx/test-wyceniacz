@@ -413,14 +413,14 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     setState(s => ({ ...s, clients: s.clients.filter(c => c.id !== id) }));
   };
 
-  const addService = async (s: Service) => {
-    await upsert('services', s);
-    setState(s => ({ ...s, services: [...s.services, s] }));
+  const addService = async (service: Service) => {
+    await upsert('services', service);
+    setState(prev => ({ ...prev, services: [...prev.services, service] }));
   };
 
-  const updateService = async (s: Service) => {
-    await upsert('services', s);
-    setState(s => ({ ...s, services: s.services.map(x => (x.id === s.id ? s : x)) }));
+  const updateService = async (service: Service) => {
+    await upsert('services', service);
+    setState(prev => ({ ...prev, services: prev.services.map(x => (x.id === service.id ? service : x)) }));
   };
 
   const deleteService = async (id: string) => {

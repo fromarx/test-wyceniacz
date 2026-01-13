@@ -1,517 +1,370 @@
-// Dashboard.tsx
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Modal,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  Platform,
-  KeyboardAvoidingView
-} from 'react-native';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Animated, Easing } from 'react-native';
 import { useAppContext } from '../store/AppContext';
-import {
+import { getThemeColors, getShadows, Typography, Spacing, BorderRadius } from '../utils/theme';
+import { 
+  FileText, 
+  Users, 
+  Plus, 
+  Clock, 
+  CheckCircle2, 
   ShoppingBag,
-  Plus,
-  Trash2,
-  CheckCircle2,
-  Circle,
-  ChevronLeft,
-  X,
-  AlertTriangle
+  ArrowRight,
+  TrendingUp,
+  LayoutGrid,
+  ChevronRight,
+  Briefcase
 } from 'lucide-react-native';
-import { ShoppingList, ShoppingItem } from '../types';
 
-/* ========================================================= */
-/* ======================== DASHBOARD ====================== */
-/* ========================================================= */
+const { width } = Dimensions.get('window');
 
-const Dashboard: React.FC = () => {
-  const {
-    state,
-    addShoppingList,
-    updateShoppingList,
-    deleteShoppingList,
-    setActiveScreen
-  } = useAppContext();
+const Dashboard: React.FC<any> = ({ navigation }) => {
+  const { state, setActiveScreen } = useAppContext();
+  const { quotes, shoppingLists, darkMode, user } = state;
+  const colors = getThemeColors(darkMode);
+  const shadows = getShadows(darkMode);
+  const styles = getStyles(colors);
 
-  const { shoppingLists, darkMode } = state;
-
-  const [activeListId, setActiveListId] = useState<string | null>(null);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [newListName, setNewListName] = useState('');
-
-  const [deleteConfirm, setDeleteConfirm] = useState<{
-    isOpen: boolean;
-    listId: string | null;
-    listName: string;
-    hasPending: boolean;
-  }>({
-    isOpen: false,
-    listId: null,
-    listName: '',
-    hasPending: false
-  });
+  // Animation Refs
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
-    setActiveScreen('Lista zakupów');
+    setActiveScreen('Pulpit');
+    
+    // Entry Animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic)
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.cubic)
+      })
+    ]).start();
   }, []);
 
-  const activeList = shoppingLists.find(l => l.id === activeListId);
+  const stats = useMemo(() => {
+    const pendingQuotes = quotes.filter(q => q.status === 'wysłana' || q.status === 'robocza').length;
+    const completedQuotes = quotes.filter(q => q.status === 'zaakceptowana').length;
+    
+    // Count incomplete shopping lists
+    const activeShoppingLists = shoppingLists.filter(l => l.items?.some(i => !i.isBought)).length;
+    
+    return { pendingQuotes, completedQuotes, activeShoppingLists };
+  }, [quotes, shoppingLists]);
 
-  /* ===================== LISTA ===================== */
-
- const handleCreateList = async () => {
-   if (!newListName.trim()) {
-     Alert.alert('Błąd', 'Podaj nazwę listy');
-     return;
-   }
-
-   try {
-     const list: ShoppingList = {
-       id: Date.now().toString(),
-       name: newListName.trim(),
-       createdAt: new Date().toLocaleDateString('pl-PL'),
-       items: []
-     };
-
-     await addShoppingList(list);
-
-     // Te linie wykonają się TYLKO jeśli addShoppingList zadziała
-     setIsCreateModalOpen(false);
-     setNewListName('');
-     setActiveListId(list.id);
-   } catch (error) {
-     console.error("Błąd podczas tworzenia listy:", error);
-     Alert.alert("Błąd", "Nie udało się zapisać listy. Spróbuj ponownie.");
-   }
- };
-
-  const triggerDelete = (listId: string) => {
-    const list = shoppingLists.find(l => l.id === listId);
-    if (!list) return;
-
-    setDeleteConfirm({
-      isOpen: true,
-      listId,
-      listName: list.name,
-      hasPending: list.items?.some(i => !i.isBought) ?? false
-    });
-  };
-
-  const confirmDelete = async () => {
-    if (deleteConfirm.listId) {
-      await deleteShoppingList(deleteConfirm.listId);
-      setActiveListId(null);
-    }
-    setDeleteConfirm({ isOpen: false, listId: null, listName: '', hasPending: false });
-  };
-
-  /* ===================== RENDER ===================== */
+  const recentQuotes = useMemo(() => {
+    return quotes.slice(0, 5);
+  }, [quotes]);
 
   return (
-    <View style={[styles.container, { backgroundColor: darkMode ? '#020617' : '#f8fafc' }]}>
-      {!activeListId ? (
-        <ScrollView contentContainerStyle={styles.scroll}>
-          <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: darkMode ? '#fff' : '#0f172a' }]}>
-              Twoje listy
-            </Text>
-            <TouchableOpacity onPress={() => setIsCreateModalOpen(true)} style={styles.addBtn}>
-              <Plus size={24} color="#fff" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+          
+          {/* SECTION: WELCOME & SUMMARY */}
+          <View style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border, ...shadows.md }]}>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>{stats.pendingQuotes}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>W toku</Text>
+              </View>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: colors.success }]}>{stats.completedQuotes}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Gotowe</Text>
+              </View>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryValue, { color: colors.warning }]}>{stats.activeShoppingLists}</Text>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Zakupy</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* SECTION: ACTION DOCK */}
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Szybki start</Text>
+          <View style={styles.actionDock}>
+            <ActionCard 
+              title="Nowa Wycena" 
+              icon={<Plus size={24} color="#fff" />} 
+              color={colors.accent} 
+              onPress={() => navigation.navigate('NewQuote')}
+              styles={styles}
+            />
+            <ActionCard 
+              title="Klienci" 
+              icon={<Users size={24} color={colors.accent} />} 
+              color={colors.surface} 
+              textColor={colors.text}
+              iconColor={colors.accent}
+              border={colors.border}
+              onPress={() => navigation.navigate('ClientList')} 
+              styles={styles}
+            />
+             <ActionCard 
+              title="Usługi" 
+              icon={<TrendingUp size={24} color={colors.success} />} 
+              color={colors.surface} 
+              textColor={colors.text}
+              iconColor={colors.success}
+              border={colors.border}
+              onPress={() => navigation.navigate('Services')}
+              styles={styles}
+            />
+          </View>
+
+          {/* SECTION: ACTIVE TASKS */}
+          {stats.activeShoppingLists > 0 && (
+            <TouchableOpacity 
+              style={[styles.alertCard, { backgroundColor: colors.warningBg, borderColor: colors.warning }]}
+              onPress={() => navigation.navigate('ShoppingListScreen')}
+            >
+              <View style={styles.alertIcon}>
+                <ShoppingBag size={20} color={colors.warning} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.alertTitle, { color: colors.warning }]}>Masz otwarte listy zakupów</Text>
+                <Text style={[styles.alertDesc, { color: colors.textSecondary }]}>Kliknij, aby sprawdzić listę materiałów.</Text>
+              </View>
+              <ChevronRight size={20} color={colors.warning} />
+            </TouchableOpacity>
+          )}
+
+          {/* SECTION: RECENT ACTIVITY */}
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>Ostatnie wyceny</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Quotes')}>
+              <Text style={{ color: colors.accent, fontWeight: '700', fontSize: 13 }}>ZOBACZ WSZYSTKIE</Text>
             </TouchableOpacity>
           </View>
 
-          {shoppingLists.length === 0 ? (
-            <View style={styles.empty}>
-              <ShoppingBag size={48} color="#94a3b8" />
-              <Text style={styles.emptyText}>Brak list zakupów</Text>
+          {recentQuotes.length === 0 ? (
+            <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <LayoutGrid size={48} color={colors.textMuted} style={{ opacity: 0.5 }} />
+              <Text style={{ color: colors.textSecondary, marginTop: 12 }}>Tu pojawią się Twoje wyceny</Text>
+              <TouchableOpacity style={{ marginTop: 16 }} onPress={() => navigation.navigate('NewQuote')}>
+                <Text style={{ color: colors.accent, fontWeight: 'bold' }}>+ Stwórz pierwszą</Text>
+              </TouchableOpacity>
             </View>
           ) : (
-            shoppingLists.map(list => (
-              <TouchableOpacity
-                key={list.id}
-                style={[
-                  styles.listCard,
-                  {
-                    backgroundColor: darkMode ? '#0f172a' : '#fff',
-                    borderWidth: 1,
-                    borderColor: darkMode ? '#1e293b' : '#e2e8f0'
-                  }
-                ]}
-                onPress={() => setActiveListId(list.id)}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.listTitle, { color: darkMode ? '#f1f5f9' : '#0f172a' }]}>
-                    {list.name}
-                  </Text>
-                  <Text style={[styles.listSub, { color: darkMode ? '#94a3b8' : '#64748b' }]}>
-                    {(list.items ?? []).length} pozycji
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    triggerDelete(list.id);
-                  }}
-                  style={{ padding: 8 }}
+            <View style={{ gap: 12 }}>
+              {recentQuotes.map((quote) => (
+                <TouchableOpacity 
+                  key={quote.id}
+                  style={[styles.quoteRow, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}
+                  onPress={() => navigation.navigate('QuoteDetails', { quoteId: quote.id })}
                 >
-                  <Trash2 size={18} color="#ef4444" />
+                  <View style={[styles.quoteIcon, { backgroundColor: colors.surfaceSubtle }]}>
+                    <FileText size={20} color={colors.textSecondary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.quoteClient, { color: colors.text }]}>
+                      {quote.clientFirstName} {quote.clientLastName}
+                    </Text>
+                    <Text style={[styles.quoteNumber, { color: colors.textMuted }]}>
+                      {quote.number} • {quote.date}
+                    </Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={[styles.quoteAmount, { color: colors.text }]}>
+                      {quote.totalNet.toFixed(0)} zł
+                    </Text>
+                    <StatusBadge status={quote.status} colors={colors} styles={styles} />
+                  </View>
                 </TouchableOpacity>
-              </TouchableOpacity>
-            ))
+              ))}
+            </View>
           )}
-        </ScrollView>
-      ) : activeList ? (
-        <ShoppingListDetail
-          list={activeList}
-          darkMode={darkMode}
-          onBack={() => setActiveListId(null)}
-          onUpdate={updateShoppingList}
-          onDelete={() => triggerDelete(activeList.id)}
-        />
-      ) : (
-        <ActivityIndicator size="large" />
-      )}
 
-      {/* ================= MODAL NOWEJ LISTY ================= */}
-      <Modal
-        visible={isCreateModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsCreateModalOpen(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={{ flex: 1, justifyContent: 'center' }}
-          >
-            <View style={[styles.modalCard, { backgroundColor: darkMode ? '#0f172a' : '#fff' }]}>
-              <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#0f172a' }]}>
-                Nowa lista zakupów
-              </Text>
-
-              <TextInput
-                placeholder="Np. Remont kuchni"
-                placeholderTextColor="#94a3b8"
-                value={newListName}
-                onChangeText={setNewListName}
-                style={[
-                  styles.input,
-                  {
-                    color: darkMode ? '#fff' : '#0f172a',
-                    backgroundColor: darkMode ? '#020617' : '#f8fafc',
-                    borderColor: darkMode ? '#1e293b' : '#e2e8f0'
-                  }
-                ]}
-              />
-
-              <TouchableOpacity style={styles.primaryBtn} onPress={handleCreateList}>
-                <Text style={styles.primaryBtnText}>UTWÓRZ</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={() => setIsCreateModalOpen(false)}>
-                <Text style={styles.cancelText}>Anuluj</Text>
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
-
-      {/* ================= MODAL USUWANIA ================= */}
-      <Modal visible={deleteConfirm.isOpen} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.confirmCard}>
-            <AlertTriangle size={32} color="#ef4444" />
-            <Text style={styles.confirmTitle}>Usunąć listę?</Text>
-            <Text style={styles.confirmSub}>{deleteConfirm.listName}</Text>
-
-            {deleteConfirm.hasPending && (
-              <Text style={styles.warningText}>
-                Lista zawiera niezrealizowane pozycje
-              </Text>
-            )}
-
-            <TouchableOpacity style={styles.dangerBtn} onPress={confirmDelete}>
-              <Text style={styles.dangerText}>USUŃ</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => setDeleteConfirm({ ...deleteConfirm, isOpen: false })}>
-              <Text style={styles.cancelText}>Anuluj</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    </View>
-  );
-};
-
-/* ========================================================= */
-/* =================== SZCZEGÓŁ LISTY ====================== */
-/* ========================================================= */
-
-const ShoppingListDetail: React.FC<{
-  list: ShoppingList;
-  darkMode: boolean;
-  onBack: () => void;
-  onUpdate: (l: ShoppingList) => void;
-  onDelete: () => void;
-}> = ({ list, darkMode, onBack, onUpdate, onDelete }) => {
-  const [name, setName] = useState('');
-  const [qty, setQty] = useState('1');
-  const [unit, setUnit] = useState('szt');
-
-  const items = list.items ?? [];
-
-  const addItem = () => {
-    if (!name.trim()) return;
-
-    const item: ShoppingItem = {
-      id: Date.now().toString(),
-      name: name.trim(),
-      quantity: Number(qty.replace(',', '.')) || 1,
-      unit,
-      isBought: false
-    };
-
-    onUpdate({ ...list, items: [...items, item] });
-    setName('');
-    setQty('1');
-    setUnit('szt');
-  };
-
-  const toggle = (id: string) =>
-    onUpdate({
-      ...list,
-      items: items.map(i => (i.id === id ? { ...i, isBought: !i.isBought } : i))
-    });
-
-  const remove = (id: string) =>
-    onUpdate({ ...list, items: items.filter(i => i.id !== id) });
-
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={[
-        styles.detailHeader,
-        { borderBottomColor: darkMode ? '#1e293b' : '#e2e8f0' }
-      ]}>
-        <TouchableOpacity 
-          onPress={onBack}
-          style={{ padding: 8 }}
-        >
-          <ChevronLeft size={24} color={darkMode ? '#94a3b8' : '#64748b'} />
-        </TouchableOpacity>
-        <Text style={[
-          styles.detailTitle, 
-          { 
-            color: darkMode ? '#f1f5f9' : '#0f172a',
-            marginBottom: 0,
-            fontSize: 20
-          }
-        ]}>
-          {list.name}
-        </Text>
-        <TouchableOpacity 
-          onPress={onDelete}
-          style={{ padding: 8 }}
-        >
-          <Trash2 size={20} color="#ef4444" />
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={{ padding: 16 }}
-        style={{ backgroundColor: darkMode ? '#020617' : '#f8fafc' }}
-      >
-        <View style={[styles.addRow, { backgroundColor: darkMode ? '#0f172a' : '#f8fafc', padding: 12, borderRadius: 16 }]}>
-          <TextInput 
-            placeholder="Produkt" 
-            placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
-            value={name} 
-            onChangeText={setName} 
-            style={[
-              styles.smallInput, 
-              { 
-                backgroundColor: darkMode ? '#020617' : '#fff',
-                borderColor: darkMode ? '#1e293b' : '#e2e8f0',
-                color: darkMode ? '#f1f5f9' : '#0f172a'
-              }
-            ]} 
-          />
-          <TextInput 
-            placeholder="Ilość" 
-            placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
-            value={qty} 
-            onChangeText={setQty} 
-            style={[
-              styles.smallInput, 
-              { 
-                flex: 0.5,
-                backgroundColor: darkMode ? '#020617' : '#fff',
-                borderColor: darkMode ? '#1e293b' : '#e2e8f0',
-                color: darkMode ? '#f1f5f9' : '#0f172a'
-              }
-            ]} 
-            keyboardType="numeric" 
-          />
-          <TextInput 
-            placeholder="JM" 
-            placeholderTextColor={darkMode ? '#64748b' : '#94a3b8'}
-            value={unit} 
-            onChangeText={setUnit} 
-            style={[
-              styles.smallInput, 
-              { 
-                flex: 0.5,
-                backgroundColor: darkMode ? '#020617' : '#fff',
-                borderColor: darkMode ? '#1e293b' : '#e2e8f0',
-                color: darkMode ? '#f1f5f9' : '#0f172a'
-              }
-            ]} 
-          />
-          <TouchableOpacity 
-            onPress={addItem}
-            style={{
-              backgroundColor: '#2563eb',
-              padding: 12,
-              borderRadius: 12,
-              justifyContent: 'center',
-              alignItems: 'center'
-            }}
-          >
-            <Plus size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
-
-        {items.length === 0 ? (
-          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-            <Text style={{ color: darkMode ? '#64748b' : '#94a3b8', fontSize: 14 }}>
-              Brak pozycji na liście
-            </Text>
-          </View>
-        ) : (
-          items.map(item => (
-            <View 
-              key={item.id} 
-              style={[
-                styles.itemRow,
-                {
-                  backgroundColor: darkMode ? '#0f172a' : '#f8fafc',
-                  borderColor: darkMode ? '#1e293b' : '#e2e8f0',
-                  opacity: item.isBought ? 0.6 : 1
-                }
-              ]}
-            >
-              <TouchableOpacity onPress={() => toggle(item.id)} style={{ marginRight: 12 }}>
-                {item.isBought ? (
-                  <CheckCircle2 size={22} color="#10b981" />
-                ) : (
-                  <Circle size={22} color={darkMode ? '#475569' : '#cbd5e1'} />
-                )}
-              </TouchableOpacity>
-              <Text 
-                style={{ 
-                  flex: 1, 
-                  fontSize: 15,
-                  color: darkMode ? '#f1f5f9' : '#0f172a',
-                  textDecorationLine: item.isBought ? 'line-through' : 'none'
-                }}
-              >
-                {item.name} – {item.quantity} {item.unit}
-              </Text>
-              <TouchableOpacity 
-                onPress={() => remove(item.id)}
-                style={{ padding: 4 }}
-              >
-                <X size={18} color="#ef4444" />
-              </TouchableOpacity>
-            </View>
-          ))
-        )}
+        </Animated.View>
       </ScrollView>
     </View>
   );
 };
 
-/* ========================================================= */
-/* ========================== STYLE ======================== */
-/* ========================================================= */
+const ActionCard = ({ title, icon, color, textColor, border, iconColor, onPress, styles }: any) => (
+  <TouchableOpacity 
+    style={[
+      styles.actionCard, 
+      { backgroundColor: color, borderColor: border || 'transparent', borderWidth: border ? 1 : 0 }
+    ]}
+    onPress={onPress}
+    activeOpacity={0.8}
+  >
+    <View style={{ marginBottom: 12 }}>
+      {iconColor ? React.cloneElement(icon, { color: iconColor }) : icon}
+    </View>
+    <Text style={[styles.actionCardText, { color: textColor || '#fff' }]}>{title}</Text>
+  </TouchableOpacity>
+);
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scroll: { padding: 16 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  headerTitle: { fontSize: 26, fontWeight: '900' },
-  addBtn: { backgroundColor: '#2563eb', padding: 14, borderRadius: 16 },
-  listCard: { 
-    backgroundColor: '#fff', 
-    padding: 18, 
-    borderRadius: 18, 
-    flexDirection: 'row', 
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3
+const StatusBadge = ({ status, colors, styles }: any) => {
+  let bg = colors.surfaceSubtle;
+  let text = colors.textMuted;
+
+  if (status === 'zaakceptowana') {
+    bg = colors.successBg;
+    text = colors.success;
+  } else if (status === 'wysłana') {
+    bg = colors.accentLight;
+    text = colors.accent;
+  }
+
+  return (
+    <View style={[styles.statusBadge, { backgroundColor: bg }]}>
+      <Text style={[styles.statusText, { color: text }]}>{status}</Text>
+    </View>
+  );
+};
+
+const getStyles = (colors: any) => StyleSheet.create({
+  container: {
+    flex: 1,
   },
-  listTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
-  listSub: { fontSize: 12, color: '#64748b', marginTop: 4 },
-  empty: { alignItems: 'center', marginTop: 100, paddingVertical: 40 },
-  emptyText: { marginTop: 10, fontWeight: '900', color: '#94a3b8', fontSize: 14 },
-
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', padding: 20 },
-  modalCard: { borderRadius: 24, padding: 24 },
-  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 12 },
-  input: { borderWidth: 2, borderRadius: 14, padding: 14, marginBottom: 16 },
-  primaryBtn: { backgroundColor: '#2563eb', padding: 14, borderRadius: 14 },
-  primaryBtnText: { color: '#fff', fontWeight: '900', textAlign: 'center' },
-  cancelText: { textAlign: 'center', marginTop: 12, color: '#64748b' },
-
-  confirmCard: { backgroundColor: '#fff', padding: 24, borderRadius: 24, alignItems: 'center' },
-  confirmTitle: { fontSize: 18, fontWeight: '900', marginTop: 12 },
-  confirmSub: { color: '#64748b', marginBottom: 8 },
-  warningText: { color: '#ef4444', fontWeight: '900', marginBottom: 12 },
-  dangerBtn: { backgroundColor: '#ef4444', padding: 14, borderRadius: 14, width: '100%' },
-  dangerText: { color: '#fff', fontWeight: '900', textAlign: 'center' },
-
-  detailHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
+  scrollContent: {
+    padding: 24,
+    paddingBottom: 120,
+  },
+  summaryCard: {
+    padding: 24,
+    borderRadius: 24,
+    marginBottom: 32,
+    borderWidth: 1,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  summaryValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  divider: {
+    width: 1,
+    height: 40,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 16,
+    letterSpacing: 0.5,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 32,
+  },
+  actionDock: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 20,
+    height: 100,
+    justifyContent: 'space-between',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  actionCardText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  alertCard: {
+    flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0'
-  },
-  detailTitle: { fontSize: 24, fontWeight: '900', marginBottom: 16, color: '#0f172a' },
-  addRow: { 
-    flexDirection: 'row', 
-    gap: 8, 
-    marginBottom: 16,
-    alignItems: 'center'
-  },
-  smallInput: { 
-    borderWidth: 1, 
-    borderColor: '#e2e8f0',
-    borderRadius: 12, 
-    padding: 12, 
-    flex: 1,
-    backgroundColor: '#fff',
-    fontSize: 14
-  },
-  itemRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    marginBottom: 12,
-    padding: 12,
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#e2e8f0'
+    marginTop: 24,
+    gap: 12,
+  },
+  alertIcon: {
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
+  alertTitle: {
+    fontWeight: '700',
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  alertDesc: {
+    fontSize: 12,
+  },
+  quoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 2, // Spacing between rows handled by parent gap
+  },
+  quoteIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  quoteClient: {
+    fontWeight: '700',
+    fontSize: 15,
+    marginBottom: 4,
+  },
+  quoteNumber: {
+    fontSize: 12,
+  },
+  quoteAmount: {
+    fontWeight: '800',
+    fontSize: 15,
+    marginBottom: 6,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusText: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  emptyState: {
+    padding: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    justifyContent: 'center'
   }
 });
 

@@ -1,22 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  TextInput, Modal, Alert, Animated
+  TextInput, Modal, Alert, Animated, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import { useAppContext } from '../store/AppContext';
 import {
   Plus, Trash2, Edit2, Search, ChevronDown, ChevronRight,
-  X, Save, FolderPlus
+  X, Save, FolderPlus, Tag, Check, Package
 } from 'lucide-react-native';
 import { Service, UnitOfMeasure, MaterialItem, MaterialMode, Category } from '../types';
-import { getThemeColors } from '../utils/theme';
+import { getThemeColors, getShadows, BorderRadius } from '../utils/theme';
+import { useToast } from '../components/Toast';
 
 const ServicesList: React.FC = () => {
   const { state, addService, updateService, setActiveScreen, deleteService, addCategory, deleteCategory } = useAppContext();
   const { darkMode, categories, services } = state;
   const colors = getThemeColors(darkMode);
+  const shadows = getShadows(darkMode);
+  const { showToast } = useToast();
+  const styles = getStyles(colors);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
@@ -53,28 +57,30 @@ const ServicesList: React.FC = () => {
 
   const [formData, setFormData] = useState({
     name: '', description: '', netPrice: '', vatRate: '8',
-    unit: 'm2' as UnitOfMeasure, categoryId: 'cat_general', // DOMYŚLNIE OGÓLNA
+    unit: 'm2' as UnitOfMeasure, categoryId: 'cat_general', 
     materialMode: 'estimated' as MaterialMode, estimatedMaterialPrice: '',
     materials: [] as MaterialItem[]
   });
 
   const handleAddCategory = async () => {
     if (!newCatName.trim()) {
-      Alert.alert("Błąd", "Wpisz nazwę kategorii.");
+      showToast("Wpisz nazwę kategorii", "error");
       return;
     }
     const newCat: Category = { id: Date.now().toString(), name: newCatName.trim() };
     await addCategory(newCat);
     setNewCatName('');
     setIsCatModalOpen(false);
+    showToast("Dodano kategorię", "success");
   };
 
-useEffect(() => {
-  setActiveScreen('Usługi'); // lub odpowiednia nazwa
-}, []);
+  useEffect(() => {
+    setActiveScreen('Usługi'); 
+  }, []);
+
   const handleSubmit = async () => {
     if (!formData.name || !formData.netPrice) {
-      Alert.alert("Błąd", "Podaj nazwę i cenę usługi.");
+      showToast("Podaj nazwę i cenę usługi", "error");
       return;
     }
 
@@ -94,13 +100,15 @@ useEffect(() => {
     try {
       if (editingService) {
         await updateService(serviceData);
+        showToast("Zaktualizowano usługę", "success");
       } else {
         await addService(serviceData);
+        showToast("Dodano nową usługę", "success");
       }
       resetForm();
     } catch (error) {
       console.error('Błąd zapisywania usługi:', error);
-      Alert.alert("Błąd", "Nie udało się zapisać usługi.");
+      showToast("Błąd zapisu", "error");
     }
   };
 
@@ -135,10 +143,10 @@ useEffect(() => {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
 
       <View style={styles.topBar}>
-        <View style={[styles.searchWrapper, { backgroundColor: colors.surfaceElevated }]}>
+        <View style={[styles.searchWrapper, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
           <Search size={18} color={colors.textMuted} />
           <TextInput
             placeholder="Szukaj usługi..."
@@ -150,9 +158,9 @@ useEffect(() => {
         </View>
         <TouchableOpacity
           onPress={() => setIsCatModalOpen(true)}
-          style={[styles.catBtn, { backgroundColor: colors.surfaceElevated }]}
+          style={[styles.catBtn, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
         >
-          <FolderPlus size={22} color={colors.primary} />
+          <FolderPlus size={22} color={colors.accent} />
         </TouchableOpacity>
       </View>
 
@@ -163,40 +171,58 @@ useEffect(() => {
           const isCollapsed = collapsedCats[cat.id] || false;
 
           return (
-            <View key={cat.id} style={styles.catSection}>
-              <View style={styles.catHeader}>
-                <TouchableOpacity
-                  onPress={() => setCollapsedCats(prev => ({...prev, [cat.id]: !isCollapsed}))}
-                  style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-                >
-                  <Text style={[styles.catTitle, { color: darkMode ? '#94a3b8' : '#1e293b' }]}>
-                      {cat.name.toUpperCase()} ({catServices.length})
-                  </Text>
-                  {isCollapsed ? <ChevronRight size={16} color="#64748b" /> : <ChevronDown size={16} color="#2563eb" />}
-                </TouchableOpacity>
-
-                {/* Blokada usuwania domyślnej kategorii */}
-                {cat.id !== 'cat_general' && (
-                  <TouchableOpacity onPress={() => {
-                    Alert.alert("Usuń kategorię", `Czy usunąć "${cat.name}"? Usługi zostaną przeniesione do kategorii Ogólna.`, [
-                      { text: "Anuluj", style: "cancel" },
-                      { text: "Usuń", style: "destructive", onPress: () => deleteCategory(cat.id) }
-                    ]);
-                  }}>
-                    <Trash2 size={16} color="#ef4444" opacity={0.6} />
-                  </TouchableOpacity>
-                )}
-              </View>
+            <View key={cat.id} style={[styles.catSection, shadows.sm]}>
+              <TouchableOpacity
+                onPress={() => setCollapsedCats(prev => ({...prev, [cat.id]: !isCollapsed}))}
+                style={[
+                  styles.catHeader, 
+                  {
+                    backgroundColor: colors.surface, 
+                    borderBottomWidth: isCollapsed ? 0 : 1,
+                    borderBottomColor: colors.border,
+                  }
+                ]}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Tag size={18} color={colors.accent} />
+                  <Text style={[styles.catTitle, { color: colors.text }]}>{cat.name}</Text>
+                  <View style={[styles.badge, { backgroundColor: colors.surfaceSubtle }]}>
+                    <Text style={[styles.badgeText, { color: colors.textSecondary }]}>{catServices.length}</Text>
+                  </View>
+                </View>
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  {cat.id !== 'cat_general' && (
+                    <TouchableOpacity onPress={() => {
+                      Alert.alert("Usuń kategorię", `Czy usunąć "${cat.name}"? Usługi zostaną przeniesione do kategorii Ogólna.`, [
+                        { text: "Anuluj", style: "cancel" },
+                        { text: "Usuń", style: "destructive", onPress: () => {
+                          deleteCategory(cat.id);
+                          showToast("Kategoria usunięta", "info");
+                        }}
+                      ]);
+                    }}>
+                      <Trash2 size={16} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  )}
+                  {isCollapsed ? <ChevronRight size={20} color={colors.textSecondary} /> : <ChevronDown size={20} color={colors.textSecondary} />}
+                </View>
+              </TouchableOpacity>
 
               {!isCollapsed && (
-                <View style={styles.serviceGrid}>
-                  {catServices.map(service => (
-                    <ServiceCard
+                <View style={[styles.serviceList, { backgroundColor: colors.surfaceSubtle }]}>
+                  {catServices.map((service, index) => (
+                    <ServiceRow
                       key={service.id}
                       service={service}
-                      darkMode={darkMode}
+                      colors={colors}
+                      styles={styles}
+                      isLast={index === catServices.length - 1}
                       onEdit={() => handleEdit(service)}
-                      onDelete={() => deleteService(service.id)}
+                      onDelete={() => {
+                        deleteService(service.id);
+                        showToast("Usługa usunięta", "info");
+                      }}
                     />
                   ))}
                 </View>
@@ -211,9 +237,30 @@ useEffect(() => {
           if (orphaned.length === 0) return null;
           return (
             <View style={styles.catSection}>
-              <Text style={[styles.catTitle, { color: '#ef4444', marginBottom: 10 }]}>NIEPRZYPISANE ({orphaned.length})</Text>
-              <View style={styles.serviceGrid}>
-                {orphaned.map(s => <ServiceCard key={s.id} service={s} darkMode={darkMode} onEdit={() => handleEdit(s)} onDelete={() => deleteService(s.id)} />)}
+              <View style={[styles.catHeader, { backgroundColor: colors.surface, borderColor: colors.border, ...shadows.sm }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Tag size={18} color={colors.danger} />
+                  <Text style={[styles.catTitle, { color: colors.danger }]}>NIEPRZYPISANE</Text>
+                  <View style={[styles.badge, { backgroundColor: colors.dangerBg }]}>
+                    <Text style={[styles.badgeText, { color: colors.danger }]}>{orphaned.length}</Text>
+                  </View>
+                </View>
+              </View>
+              <View style={styles.serviceList}>
+                {orphaned.map((s, index) => (
+                  <ServiceRow 
+                    key={s.id} 
+                    service={s} 
+                    colors={colors}
+                    styles={styles}
+                    isLast={index === orphaned.length - 1}
+                    onEdit={() => handleEdit(s)} 
+                    onDelete={() => {
+                      deleteService(s.id);
+                      showToast("Usługa usunięta", "info");
+                    }} 
+                  />
+                ))}
               </View>
             </View>
           );
@@ -222,7 +269,7 @@ useEffect(() => {
 
       <TouchableOpacity 
         onPress={() => setIsModalOpen(true)} 
-        style={[styles.fab, { backgroundColor: colors.primary }]}
+        style={[styles.fab, { backgroundColor: colors.accent, ...shadows.lg }]} 
         activeOpacity={0.8}
       >
         <Plus size={32} color="#fff" />
@@ -235,7 +282,7 @@ useEffect(() => {
               style={[
                 styles.catModalContent, 
                 { 
-                  backgroundColor: colors.surfaceElevated,
+                  backgroundColor: colors.surface,
                   opacity: modalOpacity,
                   transform: [{ scale: modalScale }]
                 }
@@ -243,18 +290,18 @@ useEffect(() => {
             >
                 <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 15 }]}>Nowa kategoria</Text>
                 <TextInput
-                    style={[styles.input, { backgroundColor: colors.surface, color: colors.text }]}
+                    style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
                     placeholder="Wpisz nazwę..."
                     placeholderTextColor={colors.textMuted}
                     value={newCatName}
                     onChangeText={setNewCatName}
                 />
                 <View style={[styles.row, { marginTop: 20 }]}>
-                    <TouchableOpacity onPress={() => setIsCatModalOpen(false)} style={[styles.saveBtn, { flex: 1, backgroundColor: colors.textMuted }]}>
-                        <Text style={styles.saveBtnText}>ANULUJ</Text>
+                    <TouchableOpacity onPress={() => setIsCatModalOpen(false)} style={[styles.saveBtn, { flex: 1, backgroundColor: colors.surfaceSubtle }]}>
+                        <Text style={[styles.saveBtnText, { color: colors.textSecondary }]}>ANULUJ</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={handleAddCategory} style={[styles.saveBtn, { flex: 1, marginLeft: 10, backgroundColor: colors.primary }]}>
-                        <Text style={styles.saveBtnText}>DODAJ</Text>
+                    <TouchableOpacity onPress={handleAddCategory} style={[styles.saveBtn, { flex: 1, backgroundColor: colors.accent }]}>
+                        <Text style={[styles.saveBtnText, { color: '#fff' }]}>DODAJ</Text>
                     </TouchableOpacity>
                 </View>
             </Animated.View>
@@ -264,48 +311,49 @@ useEffect(() => {
       {/* MODAL USŁUGI */}
       <Modal visible={isModalOpen} animationType="slide" onRequestClose={resetForm}>
         <SafeAreaView style={[styles.modalBody, { backgroundColor: colors.background }]}>
-          <View style={styles.modalHeader}>
-            <Text style={[styles.modalTitle, { color: darkMode ? '#fff' : '#000' }]}>{editingService ? 'Edycja' : 'Nowa usługa'}</Text>
-            <TouchableOpacity onPress={resetForm}><X size={28} color={darkMode ? '#fff' : '#000'} /></TouchableOpacity>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{editingService ? 'Edycja' : 'Nowa usługa'}</Text>
+            <TouchableOpacity onPress={resetForm}><X size={28} color={colors.text} /></TouchableOpacity>
           </View>
 
           <ScrollView style={{ padding: 20 }}>
-            <Text style={styles.label}>KATEGORIA</Text>
-            <View style={[styles.pickerBox, { backgroundColor: darkMode ? '#0f172a' : '#f1f5f9' }]}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>KATEGORIA</Text>
+            <View style={[styles.pickerBox, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
               <Picker
                 selectedValue={formData.categoryId}
                 onValueChange={(v) => setFormData({...formData, categoryId: v})}
-                style={{ color: darkMode ? '#fff' : '#000' }}
-                dropdownIconColor={darkMode ? '#fff' : '#000'}
+                style={{ color: colors.text }}
+                dropdownIconColor={colors.text}
               >
-                {categories.map(c => <Picker.Item key={c.id} label={c.name} value={c.id} />)}
+                {categories.map(c => <Picker.Item key={c.id} label={c.name} value={c.id} color={colors.text} />)}
               </Picker>
             </View>
 
-            <Text style={styles.label}>NAZWA USŁUGI</Text>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>NAZWA USŁUGI</Text>
             <TextInput
-              style={[styles.input, { backgroundColor: darkMode ? '#0f172a' : '#f1f5f9', color: darkMode ? '#fff' : '#000' }]}
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
               value={formData.name}
               onChangeText={(v) => setFormData({...formData, name: v})}
             />
 
             <View style={styles.row}>
               <View style={{ flex: 2 }}>
-                <Text style={styles.label}>CENA NETTO</Text>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>CENA NETTO</Text>
                 <TextInput
                   keyboardType="numeric"
-                  style={[styles.input, { backgroundColor: darkMode ? '#0f172a' : '#f1f5f9', color: darkMode ? '#fff' : '#000' }]}
+                  style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
                   value={formData.netPrice}
                   onChangeText={(v) => setFormData({...formData, netPrice: v})}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.label}>J.M.</Text>
-                <View style={[styles.pickerBox, { backgroundColor: darkMode ? '#0f172a' : '#f1f5f9' }]}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>J.M.</Text>
+                <View style={[styles.pickerBox, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
                   <Picker
                     selectedValue={formData.unit}
                     onValueChange={(v) => setFormData({...formData, unit: v as UnitOfMeasure})}
-                    style={{ color: darkMode ? '#fff' : '#000' }}
+                    style={{ color: colors.text }}
+                    dropdownIconColor={colors.text}
                   >
                     <Picker.Item label="m2" value="m2" />
                     <Picker.Item label="mb" value="mb" />
@@ -315,9 +363,9 @@ useEffect(() => {
               </View>
             </View>
 
-            <TouchableOpacity onPress={handleSubmit} style={styles.saveBtn}>
+            <TouchableOpacity onPress={handleSubmit} style={[styles.saveBtn, { backgroundColor: colors.accent, marginTop: 30 }]}>
               <Save size={20} color="#fff" />
-              <Text style={styles.saveBtnText}>ZAPISZ USŁUGĘ</Text>
+              <Text style={[styles.saveBtnText, { color: '#fff' }]}>ZAPISZ USŁUGĘ</Text>
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
@@ -326,118 +374,110 @@ useEffect(() => {
   );
 };
 
-const ServiceCard = ({ service, darkMode, onEdit, onDelete }: any) => {
-  const colors = getThemeColors(darkMode);
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.95,
-      useNativeDriver: true,
-    }).start();
-  };
-  
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
-  };
-  
+const ServiceRow = ({ service, colors, styles, isLast, onEdit, onDelete }: any) => {
   return (
-    <Animated.View 
+    <View 
       style={[
-        styles.card, 
+        styles.serviceRow, 
         { 
-          backgroundColor: colors.surfaceElevated, 
-          borderColor: colors.border,
-          transform: [{ scale: scaleAnim }]
+          backgroundColor: colors.surface, 
+          borderBottomWidth: isLast ? 0 : 1,
+          borderBottomColor: colors.borderSubtle || colors.border
         }
       ]}
     >
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        style={{ flex: 1 }}
-      >
-        <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
-          {service.name?.toUpperCase() || 'Bez nazwy'}
-        </Text>
-        <Text style={[styles.cardPrice, { color: colors.primary }]}>
-          {service.netPrice} zł <Text style={[styles.cardUnit, { color: colors.textMuted }]}>/ {service.unit}</Text>
-        </Text>
-        <View style={styles.cardActions}>
-          <TouchableOpacity onPress={onEdit} style={[styles.actionBtn, { backgroundColor: colors.borderLight }]}>
-            <Edit2 size={14} color={colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onDelete} style={[styles.actionBtn, { backgroundColor: colors.borderLight }]}>
-            <Trash2 size={14} color={colors.danger} />
-          </TouchableOpacity>
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.serviceName, { color: colors.text }]}>{service.name}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 }}>
+          <Text style={[styles.servicePrice, { color: colors.accent }]}>
+            {service.netPrice} zł <Text style={{ color: colors.textMuted, fontSize: 12 }}>/ {service.unit}</Text>
+          </Text>
+          {service.materialMode === 'estimated' && (
+            <View style={[styles.tag, { backgroundColor: colors.surfaceSubtle }]}>
+              <Package size={10} color={colors.textMuted} />
+              <Text style={[styles.tagText, { color: colors.textMuted }]}>Ryczałt</Text>
+            </View>
+          )}
         </View>
-      </TouchableOpacity>
-    </Animated.View>
+      </View>
+      
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        <TouchableOpacity onPress={onEdit}>
+          <Edit2 size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onDelete}>
+          <Trash2 size={18} color={colors.danger} />
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 };
 
-// Style pozostają bez zmian jak w oryginale
-const styles = StyleSheet.create({
+// Style
+const getStyles = (colors: any) => StyleSheet.create({
   container: { flex: 1 },
   topBar: { flexDirection: 'row', padding: 16, gap: 10 },
-  searchWrapper: { flex: 1, height: 50, borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, elevation: 2 },
+  searchWrapper: { flex: 1, height: 50, borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15 },
   searchInput: { flex: 1, marginLeft: 10, fontWeight: 'bold' },
-  catBtn: { width: 50, height: 50, borderRadius: 15, justifyContent: 'center', alignItems: 'center', elevation: 2 },
-  catSection: { marginBottom: 20 },
-  catHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, marginBottom: 10 },
-  catTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
-  serviceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  card: { width: '48%', borderRadius: 20, padding: 15, borderWidth: 1, justifyContent: 'space-between' },
-  cardTitle: { fontSize: 11, fontWeight: '900', marginBottom: 8 },
-  cardPrice: { fontSize: 16, fontWeight: '900', color: '#2563eb' },
-  cardUnit: { fontSize: 8, color: '#64748b' },
-  cardActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 10, gap: 5 },
-  actionBtn: { padding: 8, backgroundColor: '#f1f5f9', borderRadius: 10 },
+  catBtn: { width: 50, height: 50, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  catSection: { 
+    marginBottom: 16, 
+    marginHorizontal: 16, 
+    borderRadius: 16, 
+    overflow: 'hidden', 
+    borderWidth: 1, 
+    borderColor: colors.border 
+  },
+  catHeader: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    padding: 16, 
+    zIndex: 2,
+  },
+  catTitle: { fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
+  badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  serviceList: {},
+  serviceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    paddingLeft: 20,
+  },
+  serviceName: { fontSize: 14, fontWeight: '600' },
+  servicePrice: { fontSize: 14, fontWeight: '800' },
+  tag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  tagText: { fontSize: 10, fontWeight: '600' },
   fab: { 
     position: 'absolute', 
-    bottom: 30, 
+    bottom: 30, // Pozycja dostosowana do braku navbara w niektórych widokach
     right: 24, 
-    width: 64, 
-    height: 64, 
-    borderRadius: 24, 
-    backgroundColor: '#6366f1', 
+    width: 60, 
+    height: 60, 
+    borderRadius: 20, 
     justifyContent: 'center', 
     alignItems: 'center', 
-    elevation: 8,
-    shadowColor: '#6366f1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
   },
   modalBody: { flex: 1 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1 },
   modalTitle: { fontSize: 20, fontWeight: '900' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   catModalContent: { width: '100%', borderRadius: 25, padding: 25, elevation: 10 },
-  label: { fontSize: 9, fontWeight: '900', color: '#64748b', marginBottom: 5, marginTop: 15 },
-  input: { height: 50, borderRadius: 12, paddingHorizontal: 15, fontWeight: 'bold' },
+  label: { fontSize: 11, fontWeight: '800', marginBottom: 8, marginTop: 15, letterSpacing: 0.5 },
+  input: { height: 50, borderRadius: 12, paddingHorizontal: 15, fontWeight: '600' },
   pickerBox: { borderRadius: 12, height: 50, justifyContent: 'center', overflow: 'hidden' },
   row: { flexDirection: 'row', gap: 10 },
   saveBtn: { 
-    backgroundColor: '#6366f1', 
-    height: 60, 
-    borderRadius: 15, 
+    height: 56, 
+    borderRadius: 16, 
     flexDirection: 'row', 
     justifyContent: 'center', 
     alignItems: 'center', 
     gap: 10, 
     marginTop: 10,
-    shadowColor: '#6366f1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  saveBtnText: { color: '#fff', fontWeight: '900' }
+  saveBtnText: { fontWeight: '900', fontSize: 15 }
 });
 
 export default ServicesList;
