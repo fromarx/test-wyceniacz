@@ -127,7 +127,7 @@ const initialState: AppState = {
   quotes: [],
   shoppingLists: [],
   darkMode: true,
-  subscriptionStatus: SubscriptionStatus.CHECKING,
+  subscriptionStatus: SubscriptionStatus.ACTIVE, // TESTY: Zawsze aktywna
   hasMoreQuotes: true,
   currentQuotesPage: 0,
   activeScreenName: 'Dashboard'
@@ -298,6 +298,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     serviceApartmentNo: q.serviceApartmentNo,
     servicePostalCode: q.servicePostalCode,
     serviceCity: q.serviceCity,
+    estimatedCompletionDate: q.estimatedCompletionDate,
     status: q.status,
     totalNet: q.totalNet,
     totalVat: q.totalVat,
@@ -322,6 +323,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     serviceApartmentNo: row.serviceApartmentNo || row.apartmentNo,
     servicePostalCode: row.servicePostalCode || row.postalCode,
     serviceCity: row.serviceCity || row.city,
+    estimatedCompletionDate: row.estimatedCompletionDate,
     status: row.status,
     totalNet: row.totalNet,
     totalVat: row.totalVat,
@@ -558,6 +560,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     );
   }
 
+  /* TESTY: Wyłączony Paywall
   if (state.subscriptionStatus !== SubscriptionStatus.ACTIVE) {
     return (
       <PaywallScreen
@@ -568,6 +571,7 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
       />
     );
   }
+  */
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };

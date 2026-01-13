@@ -3,12 +3,14 @@ import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, Modal, Alert, Platform, KeyboardAvoidingView, Animated
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppContext } from '../store/AppContext';
 import {
   Plus, Search, ChevronRight, X, Ruler, Package, Check,
-  ChevronLeft, Trash2, Box, UserPlus, Briefcase, FileText, Settings2
+  ChevronLeft, Trash2, Box, UserPlus, Briefcase, FileText, Settings2,
+  Calendar
 } from 'lucide-react-native';
 import {
   Quote, QuoteItem, QuoteStatus, Service, UnitOfMeasure,
@@ -50,6 +52,8 @@ const NewQuote: React.FC = () => {
   });
 
   const [selectedItems, setSelectedItems] = useState<QuoteItem[]>([]);
+  const [estimatedDate, setEstimatedDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const [customService, setCustomService] = useState<Partial<QuoteItem>>({
     name: '', netPrice: 0, quantity: 1, unit: 'm2', vatRate: 8,
@@ -60,7 +64,30 @@ const NewQuote: React.FC = () => {
     name: '', price: 0, consumption: 1, unit: 'szt'
   });
 
-  useEffect(() => { setActiveScreen('Nowa wycena'); }, []);
+  useEffect(() => {
+    setActiveScreen('Nowa wycena');
+    if (isEditMode && id) {
+      const q = state.quotes.find(x => x.id === id);
+      if (q) {
+        setClientInfo({
+          clientId: q.clientId || '',
+          firstName: q.clientFirstName,
+          lastName: q.clientLastName,
+          phone: q.clientPhone,
+          email: q.clientEmail,
+          clientCompany: q.clientCompany,
+          clientNip: q.clientNip || '',
+          serviceStreet: q.serviceStreet,
+          serviceHouseNo: q.serviceHouseNo,
+          serviceApartmentNo: q.serviceApartmentNo || '',
+          servicePostalCode: q.servicePostalCode,
+          serviceCity: q.serviceCity
+        });
+        setEstimatedDate(q.estimatedCompletionDate || '');
+        setSelectedItems(q.items);
+      }
+    }
+  }, [id, isEditMode, state.quotes]);
 
   // --- LOGIKA KLIENTA ---
   const handleSelectClient = (c: Client) => {
@@ -142,6 +169,27 @@ const NewQuote: React.FC = () => {
     }, { net: 0, vat: 0, gross: 0 });
   };
 
+  const parseDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    const parts = dateStr.split('.');
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+      if (!isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    // Na Androidzie zmiana daty od razu zamyka picker
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    
+    if (selectedDate) {
+      setEstimatedDate(selectedDate.toLocaleDateString('pl-PL'));
+    }
+  };
+
   const handleFinalSave = async () => {
     if (!clientInfo.firstName || !clientInfo.phone || !clientInfo.serviceCity) {
       Alert.alert('Błąd', 'Uzupełnij dane zleceniodawcy (imię, telefon, miejscowość).');
@@ -166,6 +214,7 @@ const NewQuote: React.FC = () => {
       clientCompany: clientInfo.clientCompany, serviceStreet: clientInfo.serviceStreet,
       serviceHouseNo: clientInfo.serviceHouseNo, serviceApartmentNo: clientInfo.serviceApartmentNo,
       servicePostalCode: clientInfo.servicePostalCode, serviceCity: clientInfo.serviceCity,
+      estimatedCompletionDate: estimatedDate,
       items: selectedItems, totalNet: totals.net, totalVat: totals.vat, totalGross: totals.gross
     };
 
@@ -242,6 +291,49 @@ const NewQuote: React.FC = () => {
                 <CustomInput label="Telefon*" value={clientInfo.phone} onChangeText={(v:any) => setClientInfo({...clientInfo, phone: v})} colors={colors} styles={styles} keyboardType="phone-pad" />
                 <CustomInput label="Email (do wysyłki PDF)" value={clientInfo.email} onChangeText={(v:any) => setClientInfo({...clientInfo, email: v})} colors={colors} styles={styles} keyboardType="email-address" autoCapitalize="none" />
                 <CustomInput label="Miejscowość*" value={clientInfo.serviceCity} onChangeText={(v:any) => setClientInfo({...clientInfo, serviceCity: v})} colors={colors} styles={styles} />
+
+                <View style={styles.inputWrapper}>
+                  <Text style={[styles.label, { color: colors.textSecondary }]}>Szacowany termin realizacji</Text>
+                  <TouchableOpacity 
+                    onPress={() => setShowDatePicker(true)}
+                    style={[styles.row, { borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 10 }]}
+                  >
+                    <Calendar size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
+                    <Text style={{ color: estimatedDate ? colors.text : colors.textMuted, fontSize: 16 }}>
+                      {estimatedDate || "Wybierz datę..."}
+                    </Text>
+                  </TouchableOpacity>
+                  {showDatePicker && Platform.OS === 'ios' && (
+                    <Modal transparent animationType="fade" visible={showDatePicker}>
+                      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }}>
+                        <View style={{ backgroundColor: colors.surface, borderRadius: 24, padding: 20 }}>
+                          <DateTimePicker
+                            value={parseDate(estimatedDate)}
+                            mode="date"
+                            display="spinner"
+                            onChange={onDateChange}
+                            textColor={colors.text}
+                          />
+                          <TouchableOpacity 
+                            onPress={() => setShowDatePicker(false)}
+                            style={{ backgroundColor: colors.accent, padding: 15, borderRadius: 15, alignItems: 'center', marginTop: 10 }}
+                          >
+                            <Text style={{ color: '#fff', fontWeight: 'bold' }}>ZATWIERDŹ</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </Modal>
+                  )}
+
+                  {showDatePicker && Platform.OS === 'android' && (
+                    <DateTimePicker
+                      value={parseDate(estimatedDate)}
+                      mode="date"
+                      display="default"
+                      onChange={onDateChange}
+                    />
+                  )}
+                </View>
 
                 {!clientInfo.clientId && clientInfo.firstName && (
                   <TouchableOpacity 
