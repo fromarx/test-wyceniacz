@@ -184,19 +184,19 @@ useEffect(() => {
 
       // --- 👇 ZMIANA ZACZYNA SIĘ TUTAJ 👇 ---
       
-      // Otaczamy RevenueCat osobnym try-catch, żeby błąd płatności nie zabił całej apki
-      try {
-        if (!(await Purchases.isConfigured())) {
-          const apiKey = Platform.select({
-            ios: 'twoj_klucz_ios',
-            // Upewnij się, że ten klucz jest poprawny (zaczyna się od goog_) 
-            // lub zaakceptuj, że w emulatorze to rzuci błąd.
-            android: 'test_aJPikIwIYUvlNeohuVTKgNQYcDq' 
-          })!;
-          await Purchases.configure({ apiKey });
-        }
-      } catch (rcError) {
-        console.warn("Błąd konfiguracji RevenueCat (ignorujemy, żeby apka wstała):", rcError);
+     if (!FORCE_DEV_MODE) { 
+          // Tylko jeśli NIE jesteśmy w trybie wymuszonym, próbujemy łączyć się z RevenueCat
+          try {
+            if (!(await Purchases.isConfigured())) {
+              const apiKey = Platform.select({
+                ios: 'twoj_klucz_ios',
+                android: 'test_aJPikIwIYUvlNeohuVTKgNQYcDq' 
+              })!;
+              await Purchases.configure({ apiKey });
+            }
+          } catch (rcError) {
+            console.warn("Błąd RC:", rcError);
+          }
       }
 
 
