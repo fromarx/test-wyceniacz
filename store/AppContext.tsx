@@ -179,21 +179,31 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   /* ============================= */
   /* ===== INIT ================= */
   /* ============================= */
-  useEffect(() => {
-    let mounted = true;
+useEffect(() => {
+  let mounted = true;
 
-    (async () => {
+  (async () => {
+    try {
+      await initDatabase();
+      const db = await getDbConnection();
+
+      // --- 👇 ZMIANA ZACZYNA SIĘ TUTAJ 👇 ---
+      
+      // Otaczamy RevenueCat osobnym try-catch, żeby błąd płatności nie zabił całej apki
       try {
-        await initDatabase();
-        const db = await getDbConnection();
-
         if (!(await Purchases.isConfigured())) {
           const apiKey = Platform.select({
             ios: 'twoj_klucz_ios',
-            android: 'test_aJPikIwIYUvlNeohuVTKgNQYcDq'
+            // Upewnij się, że ten klucz jest poprawny (zaczyna się od goog_) 
+            // lub zaakceptuj, że w emulatorze to rzuci błąd.
+            android: 'test_aJPikIwIYUvlNeohuVTKgNQYcDq' 
           })!;
           await Purchases.configure({ apiKey });
         }
+      } catch (rcError) {
+        console.warn("Błąd konfiguracji RevenueCat (ignorujemy, żeby apka wstała):", rcError);
+      }
+
 
         const subscriptionStatus = await checkSubscription();
 
