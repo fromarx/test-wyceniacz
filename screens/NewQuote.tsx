@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, Modal, Alert, Platform, KeyboardAvoidingView, Animated
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppContext } from '../store/AppContext';
@@ -180,14 +180,23 @@ const NewQuote: React.FC = () => {
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
-    // Na Androidzie zmiana daty od razu zamyka picker
-    if (Platform.OS === 'android') {
-      setShowDatePicker(false);
-    }
-    
+    // Na iOS zamykamy picker ręcznie przez modal
     if (selectedDate) {
       setEstimatedDate(selectedDate.toLocaleDateString('pl-PL'));
     }
+  };
+
+  const showAndroidDatePicker = () => {
+    DateTimePickerAndroid.open({
+      value: parseDate(estimatedDate),
+      onChange: (event, selectedDate) => {
+        if (event.type === 'set' && selectedDate) {
+          setEstimatedDate(selectedDate.toLocaleDateString('pl-PL'));
+        }
+      },
+      mode: 'date',
+      display: 'default',
+    });
   };
 
   const handleFinalSave = async () => {
@@ -295,7 +304,7 @@ const NewQuote: React.FC = () => {
                 <View style={styles.inputWrapper}>
                   <Text style={[styles.label, { color: colors.textSecondary }]}>Szacowany termin realizacji</Text>
                   <TouchableOpacity 
-                    onPress={() => setShowDatePicker(true)}
+                    onPress={() => Platform.OS === 'android' ? showAndroidDatePicker() : setShowDatePicker(true)}
                     style={[styles.row, { borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 10 }]}
                   >
                     <Calendar size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
@@ -323,15 +332,6 @@ const NewQuote: React.FC = () => {
                         </View>
                       </View>
                     </Modal>
-                  )}
-
-                  {showDatePicker && Platform.OS === 'android' && (
-                    <DateTimePicker
-                      value={parseDate(estimatedDate)}
-                      mode="date"
-                      display="default"
-                      onChange={onDateChange}
-                    />
                   )}
                 </View>
 
