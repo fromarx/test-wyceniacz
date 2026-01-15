@@ -5,7 +5,7 @@ import {
   Keyboard
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useAppContext } from '../store/AppContext';
 import {
   Search, Plus, Phone, Mail, Trash2,
@@ -148,6 +148,30 @@ const ClientList: React.FC = () => {
 
     if (Platform.OS !== 'web') Keyboard.dismiss();
     setIsModalOpen(false);
+  };
+
+  const showAndroidDateTimePicker = () => {
+    // Na Androidzie musimy najpierw wybrać datę, a potem godzinę, jeśli chcemy datetime
+    DateTimePickerAndroid.open({
+      value: newReminder.date,
+      onChange: (event, date) => {
+        if (event.type === 'set' && date) {
+          // Po wybraniu daty, otwieramy picker godziny
+          DateTimePickerAndroid.open({
+            value: date,
+            onChange: (eventTime, time) => {
+              if (eventTime.type === 'set' && time) {
+                setNewReminder({ ...newReminder, date: time });
+              }
+            },
+            mode: 'time',
+            is24Hour: true,
+          });
+        }
+      },
+      mode: 'date',
+      display: 'default',
+    });
   };
 
   const handleSaveReminder = async () => {
@@ -364,17 +388,28 @@ const ClientList: React.FC = () => {
               value={newReminder.note}
               onChangeText={(v) => setNewReminder({...newReminder, note: v})}
             />
-            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={[styles.dateBtn, { borderColor: colors.border }]}>
+            <TouchableOpacity
+              onPress={() => {
+                if (Platform.OS === 'android') {
+                  showAndroidDateTimePicker();
+                } else {
+                  setShowDatePicker(true);
+                }
+              }}
+              style={[styles.dateBtn, { borderColor: colors.border }]}
+            >
               <Clock size={16} color={colors.accent} />
               <Text style={[styles.dateBtnText, { color: colors.accent }]}>{newReminder.date.toLocaleString('pl-PL')}</Text>
             </TouchableOpacity>
 
-            {showDatePicker && (
+            {showDatePicker && Platform.OS === 'ios' && (
               <DateTimePicker
                 value={newReminder.date}
                 mode="datetime"
                 display="default"
-                onChange={(e, d) => { setShowDatePicker(false); if(d) setNewReminder({...newReminder, date: d}); }}
+                onChange={(e, d) => {
+                  if (d) setNewReminder({ ...newReminder, date: d });
+                }}
               />
             )}
 
