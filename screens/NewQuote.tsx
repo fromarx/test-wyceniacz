@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { 
+import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, Modal, Alert, Platform, KeyboardAvoidingView, Animated
 } from 'react-native';
@@ -235,19 +235,19 @@ const NewQuote: React.FC = () => {
       }
 
       Alert.alert(
-        'Zapisano pomyślnie', 
+        'Zapisano pomyślnie',
         'Wycena została zapisana. Czy chcesz teraz wygenerować i wysłać PDF?',
         [
-          { 
-            text: 'Tylko zapisz', 
-            onPress: () => navigation.navigate('MainTabs', { screen: 'Quotes' }) 
+          {
+            text: 'Tylko zapisz',
+            onPress: () => navigation.navigate('MainTabs', { screen: 'Quotes' })
           },
-          { 
-            text: 'Zapisz i wyślij PDF', 
+          {
+            text: 'Zapisz i wyślij PDF',
             onPress: async () => {
               await PdfGenerator.download(quoteData, user);
               navigation.navigate('MainTabs', { screen: 'Quotes' });
-            } 
+            }
           }
         ]
       );
@@ -266,17 +266,25 @@ const NewQuote: React.FC = () => {
           <TouchableOpacity onPress={() => step > 1 ? setStep(step - 1) : navigation.goBack()}>
             <ChevronLeft color={colors.textSecondary} size={28} />
           </TouchableOpacity>
-          <View style={styles.stepIndicator}>
-            {[1, 2, 3].map(s => (
-              <View 
-                key={s} 
-                style={[
-                  styles.stepDot, 
-                  { backgroundColor: step >= s ? colors.accent : colors.borderStrong },
-                  step >= s && { width: 24 }
-                ]} 
-              />
-            ))}
+          <View style={{ alignItems: 'center' }}>
+            <View style={styles.stepIndicator}>
+              {[1, 2, 3].map(s => (
+                <View
+                  key={s}
+                  style={[
+                    styles.stepDot,
+                    { backgroundColor: step >= s ? colors.accent : colors.borderStrong },
+                    step >= s && { width: 24 }
+                  ]}
+                />
+              ))}
+            </View>
+            {selectedItems.length > 0 && (
+              <View style={[styles.itemsCountBadge, { backgroundColor: colors.accent }]}>
+                <Package size={12} color="#fff" />
+                <Text style={styles.itemsCountText}>{selectedItems.length} {selectedItems.length === 1 ? 'pozycja' : selectedItems.length < 5 ? 'pozycje' : 'pozycji'}</Text>
+              </View>
+            )}
           </View>
           <View style={{ width: 28 }} />
         </View>
@@ -295,15 +303,15 @@ const NewQuote: React.FC = () => {
               </View>
 
               <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, ...shadows.sm }]}>
-                <CustomInput label="Imię*" value={clientInfo.firstName} onChangeText={(v:any) => setClientInfo({...clientInfo, firstName: v})} colors={colors} styles={styles} />
-                <CustomInput label="Nazwisko*" value={clientInfo.lastName} onChangeText={(v:any) => setClientInfo({...clientInfo, lastName: v})} colors={colors} styles={styles} />
-                <CustomInput label="Telefon*" value={clientInfo.phone} onChangeText={(v:any) => setClientInfo({...clientInfo, phone: v})} colors={colors} styles={styles} keyboardType="phone-pad" />
-                <CustomInput label="Email (do wysyłki PDF)" value={clientInfo.email} onChangeText={(v:any) => setClientInfo({...clientInfo, email: v})} colors={colors} styles={styles} keyboardType="email-address" autoCapitalize="none" />
-                <CustomInput label="Miejscowość*" value={clientInfo.serviceCity} onChangeText={(v:any) => setClientInfo({...clientInfo, serviceCity: v})} colors={colors} styles={styles} />
+                <CustomInput label="Imię*" value={clientInfo.firstName} onChangeText={(v: any) => setClientInfo({ ...clientInfo, firstName: v })} colors={colors} styles={styles} />
+                <CustomInput label="Nazwisko*" value={clientInfo.lastName} onChangeText={(v: any) => setClientInfo({ ...clientInfo, lastName: v })} colors={colors} styles={styles} />
+                <CustomInput label="Telefon*" value={clientInfo.phone} onChangeText={(v: any) => setClientInfo({ ...clientInfo, phone: v })} colors={colors} styles={styles} keyboardType="phone-pad" />
+                <CustomInput label="Email (do wysyłki PDF)" value={clientInfo.email} onChangeText={(v: any) => setClientInfo({ ...clientInfo, email: v })} colors={colors} styles={styles} keyboardType="email-address" autoCapitalize="none" />
+                <CustomInput label="Miejscowość*" value={clientInfo.serviceCity} onChangeText={(v: any) => setClientInfo({ ...clientInfo, serviceCity: v })} colors={colors} styles={styles} />
 
                 <View style={styles.inputWrapper}>
                   <Text style={[styles.label, { color: colors.textSecondary }]}>Szacowany termin realizacji</Text>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     onPress={() => Platform.OS === 'android' ? showAndroidDatePicker() : setShowDatePicker(true)}
                     style={[styles.row, { borderBottomWidth: 1, borderBottomColor: colors.border, paddingVertical: 10 }]}
                   >
@@ -323,7 +331,7 @@ const NewQuote: React.FC = () => {
                             onChange={onDateChange}
                             textColor={colors.text}
                           />
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             onPress={() => setShowDatePicker(false)}
                             style={{ backgroundColor: colors.accent, padding: 15, borderRadius: 15, alignItems: 'center', marginTop: 10 }}
                           >
@@ -336,8 +344,8 @@ const NewQuote: React.FC = () => {
                 </View>
 
                 {!clientInfo.clientId && clientInfo.firstName && (
-                  <TouchableOpacity 
-                    style={[styles.outlineAction, { borderColor: colors.accent }]} 
+                  <TouchableOpacity
+                    style={[styles.outlineAction, { borderColor: colors.accent }]}
                     onPress={saveClientToDb}
                   >
                     <UserPlus size={18} color={colors.accent} />
@@ -355,44 +363,44 @@ const NewQuote: React.FC = () => {
 
               <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, ...shadows.sm }]}>
                 <Text style={[styles.cardLabel, { color: colors.accent }]}>DODAJ USŁUGĘ "Z RĘKI"</Text>
-                <TextInput 
-                  placeholder="Nazwa usługi..." 
+                <TextInput
+                  placeholder="Nazwa usługi..."
                   placeholderTextColor={colors.textMuted}
-                  style={[styles.simpleInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
-                  value={customService.name} 
-                  onChangeText={v => setCustomService({...customService, name: v})} 
+                  style={[styles.simpleInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                  value={customService.name}
+                  onChangeText={v => setCustomService({ ...customService, name: v })}
                 />
                 <View style={styles.row}>
-                  <TextInput 
-                    placeholder="Cena netto" 
+                  <TextInput
+                    placeholder="Cena netto"
                     placeholderTextColor={colors.textMuted}
-                    style={[styles.simpleInput, { flex: 2, marginRight: 10, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
-                    keyboardType="numeric" 
-                    onChangeText={v => setCustomService({...customService, netPrice: Number(v)})} 
+                    style={[styles.simpleInput, { flex: 2, marginRight: 10, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                    keyboardType="numeric"
+                    onChangeText={v => setCustomService({ ...customService, netPrice: Number(v) })}
                   />
-                  <TextInput 
-                    placeholder="jm" 
+                  <TextInput
+                    placeholder="jm"
                     placeholderTextColor={colors.textMuted}
-                    style={[styles.simpleInput, { flex: 1, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
-                    value={customService.unit} 
-                    onChangeText={v => setCustomService({...customService, unit: v as any})} 
+                    style={[styles.simpleInput, { flex: 1, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                    value={customService.unit}
+                    onChangeText={v => setCustomService({ ...customService, unit: v as any })}
                   />
                 </View>
 
                 <View style={styles.modeToggle}>
-                  <TouchableOpacity 
-                    onPress={() => setCustomService({...customService, materialMode: 'estimated'})} 
+                  <TouchableOpacity
+                    onPress={() => setCustomService({ ...customService, materialMode: 'estimated' })}
                     style={[
-                      styles.modeBtn, 
+                      styles.modeBtn,
                       customService.materialMode === 'estimated' ? { backgroundColor: colors.accent } : { backgroundColor: colors.border }
                     ]}
                   >
                     <Text style={[styles.modeBtnText, { color: customService.materialMode === 'estimated' ? '#fff' : colors.textSecondary }]}>RYCZAŁT MAT.</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
-                    onPress={() => setCustomService({...customService, materialMode: 'detailed'})} 
+                  <TouchableOpacity
+                    onPress={() => setCustomService({ ...customService, materialMode: 'detailed' })}
                     style={[
-                      styles.modeBtn, 
+                      styles.modeBtn,
                       customService.materialMode === 'detailed' ? { backgroundColor: colors.accent } : { backgroundColor: colors.border }
                     ]}
                   >
@@ -401,38 +409,38 @@ const NewQuote: React.FC = () => {
                 </View>
 
                 {customService.materialMode === 'estimated' ? (
-                  <TextInput 
-                    placeholder="Cena materiału na jm" 
+                  <TextInput
+                    placeholder="Cena materiału na jm"
                     placeholderTextColor={colors.textMuted}
-                    style={[styles.simpleInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
-                    keyboardType="numeric" 
-                    onChangeText={v => setCustomService({...customService, estimatedMaterialPrice: Number(v)})} 
+                    style={[styles.simpleInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                    keyboardType="numeric"
+                    onChangeText={v => setCustomService({ ...customService, estimatedMaterialPrice: Number(v) })}
                   />
                 ) : (
                   <View style={[styles.innerCard, { backgroundColor: colors.surfaceSubtle }]}>
-                    <TextInput 
-                      placeholder="Nazwa materiału" 
+                    <TextInput
+                      placeholder="Nazwa materiału"
                       placeholderTextColor={colors.textMuted}
-                      style={[styles.simpleInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
-                      value={tempMaterial.name} 
-                      onChangeText={v => setTempMaterial({...tempMaterial, name: v})} 
+                      style={[styles.simpleInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                      value={tempMaterial.name}
+                      onChangeText={v => setTempMaterial({ ...tempMaterial, name: v })}
                     />
                     <View style={styles.row}>
-                      <TextInput 
-                        placeholder="Cena" 
+                      <TextInput
+                        placeholder="Cena"
                         placeholderTextColor={colors.textMuted}
-                        style={[styles.simpleInput, { flex: 1, marginRight: 5, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
-                        keyboardType="numeric" 
-                        value={tempMaterial.price?.toString()} 
-                        onChangeText={v => setTempMaterial({...tempMaterial, price: Number(v)})} 
+                        style={[styles.simpleInput, { flex: 1, marginRight: 5, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                        keyboardType="numeric"
+                        value={tempMaterial.price?.toString()}
+                        onChangeText={v => setTempMaterial({ ...tempMaterial, price: Number(v) })}
                       />
-                      <TextInput 
-                        placeholder="Zużycie/jm" 
+                      <TextInput
+                        placeholder="Zużycie/jm"
                         placeholderTextColor={colors.textMuted}
-                        style={[styles.simpleInput, { flex: 1, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]} 
-                        keyboardType="numeric" 
-                        value={tempMaterial.consumption?.toString()} 
-                        onChangeText={v => setTempMaterial({...tempMaterial, consumption: Number(v)})} 
+                        style={[styles.simpleInput, { flex: 1, backgroundColor: colors.background, color: colors.text, borderColor: colors.border }]}
+                        keyboardType="numeric"
+                        value={tempMaterial.consumption?.toString()}
+                        onChangeText={v => setTempMaterial({ ...tempMaterial, consumption: Number(v) })}
                       />
                     </View>
                     <TouchableOpacity style={[styles.addMatBtn, { backgroundColor: colors.textSecondary }]} onPress={addMaterialToCustom}>
@@ -450,9 +458,9 @@ const NewQuote: React.FC = () => {
 
               <Text style={[styles.cardLabel, { marginTop: 10, color: colors.textMuted }]}>LUB WYBIERZ Z KATALOGU</Text>
               {services.map(s => (
-                <TouchableOpacity 
-                  key={s.id} 
-                  onPress={() => addServiceToQuote(s)} 
+                <TouchableOpacity
+                  key={s.id}
+                  onPress={() => addServiceToQuote(s)}
                   style={[styles.serviceItem, { backgroundColor: colors.surface, borderColor: colors.border }]}
                 >
                   <Text style={{ color: colors.text, flex: 1, fontWeight: '700' }}>{s.name}</Text>
@@ -472,7 +480,7 @@ const NewQuote: React.FC = () => {
                 return (
                   <View key={item.id} style={[styles.summaryItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={styles.rowBetween}>
-                      <Text style={[styles.sumName, { color: colors.text }]}>{idx+1}. {item.name}</Text>
+                      <Text style={[styles.sumName, { color: colors.text }]}>{idx + 1}. {item.name}</Text>
                       <TouchableOpacity onPress={() => setSelectedItems(selectedItems.filter(i => i.id !== item.id))}>
                         <Trash2 size={18} color={colors.danger} />
                       </TouchableOpacity>
@@ -514,8 +522,8 @@ const NewQuote: React.FC = () => {
         {/* STOPKA NAWIGACJI */}
         <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1 }]}>
           {step > 1 && (
-             <TouchableOpacity 
-              style={[styles.navBtn, styles.navBtnBack, { backgroundColor: colors.surfaceSubtle }]} 
+            <TouchableOpacity
+              style={[styles.navBtn, styles.navBtnBack, { backgroundColor: colors.surfaceSubtle }]}
               onPress={() => setStep(step - 1)}
             >
               <ChevronLeft color={colors.textSecondary} />
@@ -526,24 +534,26 @@ const NewQuote: React.FC = () => {
           <TouchableOpacity
             style={[styles.navBtn, styles.navBtnNext, { backgroundColor: step === 3 ? colors.success : colors.accent }]}
             onPress={() => {
-                if (step === 1) {
-                    if (!clientInfo.firstName || !clientInfo.phone || !clientInfo.serviceCity) {
-                        showToast('Uzupełnij wymagane pola klienta', 'error');
-                        return;
-                    }
-                    setStep(2);
-                } else if (step === 2) {
-                    if (selectedItems.length === 0) {
-                        showToast('Dodaj przynajmniej jedną usługę', 'error');
-                        return;
-                    }
-                    setStep(3);
-                } else {
-                    handleFinalSave();
+              if (step === 1) {
+                if (!clientInfo.firstName || !clientInfo.phone || !clientInfo.serviceCity) {
+                  showToast('Uzupełnij wymagane pola klienta', 'error');
+                  return;
                 }
+                setStep(2);
+              } else if (step === 2) {
+                if (selectedItems.length === 0) {
+                  showToast('Dodaj przynajmniej jedną usługę', 'error');
+                  return;
+                }
+                setStep(3);
+              } else {
+                handleFinalSave();
+              }
             }}
           >
-            <Text style={styles.navBtnNextText}>{step === 3 ? 'ZAPISZ I GENERUJ PDF' : 'DALEJ'}</Text>
+            <Text style={styles.navBtnNextText}>
+              {step === 3 ? 'ZAPISZ I GENERUJ PDF' : step === 2 ? `DALEJ (${selectedItems.length})` : 'DALEJ'}
+            </Text>
             {step < 3 && <ChevronRight color="#fff" />}
           </TouchableOpacity>
         </View>
@@ -576,10 +586,10 @@ const NewQuote: React.FC = () => {
 const CustomInput = ({ label, colors, styles, ...props }: any) => (
   <View style={styles.inputWrapper}>
     <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
-    <TextInput 
-      style={[styles.input, { color: colors.text, borderBottomColor: colors.border }]} 
+    <TextInput
+      style={[styles.input, { color: colors.text, borderBottomColor: colors.border }]}
       placeholderTextColor={colors.textMuted}
-      {...props} 
+      {...props}
     />
   </View>
 );
@@ -603,7 +613,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   simpleInput: { height: 48, borderRadius: 12, paddingHorizontal: 15, marginBottom: 12, borderWidth: 1, fontSize: 14 },
   modeToggle: { flexDirection: 'row', gap: 10, marginBottom: 15 },
   modeBtn: { flex: 1, padding: 12, borderRadius: 12, alignItems: 'center' },
-  modeBtnActive: { },
+  modeBtnActive: {},
   modeBtnText: { fontWeight: 'bold', fontSize: 10 },
   innerCard: { padding: 15, borderRadius: 16, marginBottom: 10 },
   addMatBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 10, borderRadius: 10, alignSelf: 'flex-start' },
@@ -626,7 +636,7 @@ const getStyles = (colors: any) => StyleSheet.create({
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, flexDirection: 'row', gap: 10 },
   navBtn: { flex: 2, height: 60, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
   navBtnBack: { flex: 1 },
-  navBtnNext: { },
+  navBtnNext: {},
   navBtnBackText: { fontWeight: 'bold' },
   navBtnNextText: { color: '#fff', fontWeight: '900' },
   modalContent: { flex: 1, padding: 20, paddingTop: 50 },
@@ -636,7 +646,9 @@ const getStyles = (colors: any) => StyleSheet.create({
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   linkBtnText: { fontWeight: 'bold', fontSize: 12 },
   outlineAction: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 15, padding: 12, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed' },
-  outlineActionText: { fontWeight: 'bold', fontSize: 12 }
+  outlineActionText: { fontWeight: 'bold', fontSize: 12 },
+  itemsCountBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  itemsCountText: { color: '#fff', fontSize: 11, fontWeight: '700' }
 });
 
 export default NewQuote;

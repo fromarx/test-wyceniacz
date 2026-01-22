@@ -66,17 +66,17 @@ const ModernHeader = ({ navigation }: any) => {
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <TouchableOpacity 
-            onPress={toggleDarkMode} 
-            style={{ 
-              padding: 8, 
-              borderRadius: 12, 
-              backgroundColor: colors.surfaceSubtle 
+          <TouchableOpacity
+            onPress={toggleDarkMode}
+            style={{
+              padding: 8,
+              borderRadius: 12,
+              backgroundColor: colors.surfaceSubtle
             }}
           >
             {darkMode ? <Sun size={20} color={colors.warning} /> : <Moon size={20} color={colors.textSecondary} />}
           </TouchableOpacity>
-          
+
           <TouchableOpacity onPress={() => navigation.navigate('ProfileScreen')}>
             <View style={{
               width: 38,
@@ -104,14 +104,14 @@ const MainTabs = ({ navigation }: any) => {
   const { state } = useAppContext();
   const { darkMode, shoppingLists, quotes } = state;
   const colors = getThemeColors(darkMode);
-  
+
   // Logic: Count INCOMPLETE shopping lists
-  const activeShoppingCount = (shoppingLists || []).filter(l => 
+  const activeShoppingCount = (shoppingLists || []).filter(l =>
     l.items && l.items.some(i => !i.isBought)
   ).length;
 
   // Logic: Count ACTIVE quotes (Draft or Sent)
-  const activeQuotesCount = (quotes || []).filter(q => 
+  const activeQuotesCount = (quotes || []).filter(q =>
     q.status === QuoteStatus.DRAFT || q.status === QuoteStatus.SENT
   ).length;
 
@@ -174,7 +174,7 @@ const MainTabs = ({ navigation }: any) => {
             tabBarLabel: '',
             tabBarIcon: () => (
               <View style={{
-                backgroundColor: colors.primary, 
+                backgroundColor: colors.primary,
                 width: 52,
                 height: 52,
                 borderRadius: 18,
@@ -209,18 +209,11 @@ const MainTabs = ({ navigation }: any) => {
         />
 
         <Tab.Screen
-          name="ShoppingListScreen"
-          component={ShoppingListScreen}
+          name="Clients"
+          component={ClientList}
           options={{
-            tabBarLabel: 'Zakupy',
-            tabBarIcon: ({ color, focused }) => <ShoppingBag size={24} strokeWidth={focused ? 2.5 : 2} color={color} />,
-            tabBarBadge: activeShoppingCount > 0 ? activeShoppingCount : undefined,
-            tabBarBadgeStyle: {
-              backgroundColor: colors.danger,
-              color: '#fff',
-              fontSize: 10,
-              fontWeight: 'bold',
-            }
+            tabBarLabel: 'Klienci',
+            tabBarIcon: ({ color, focused }) => <Users size={24} strokeWidth={focused ? 2.5 : 2} color={color} />,
           }}
         />
       </Tab.Navigator>
@@ -275,7 +268,7 @@ const AppNavigator = () => {
             <Stack.Screen name="QuoteDetails" component={QuoteDetails} />
             <Stack.Screen name="ShoppingListScreen" component={ShoppingListScreen} />
             <Stack.Screen name="ProfileScreen" component={Profile} />
-            <Stack.Screen name="ClientList" component={ClientList} /> 
+            <Stack.Screen name="ClientList" component={ClientList} />
           </Stack.Group>
         )}
       </Stack.Navigator>

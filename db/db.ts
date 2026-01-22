@@ -99,7 +99,7 @@ export const initDatabase = async () => {
 
     // 2. MIGRACJE (Naprawa istniejącej bazy danych)
     // Próbujemy dodać kolumny, jeśli ich nie ma. Jeśli są, błąd zostanie zignorowany.
-    
+
     try {
       await db.execAsync("ALTER TABLE quotes ADD COLUMN items TEXT;");
       console.log("MIGRACJA: Dodano kolumnę 'items' do tabeli 'quotes'.");
@@ -110,12 +110,17 @@ export const initDatabase = async () => {
     try {
       await db.execAsync("ALTER TABLE services ADD COLUMN defaultMaterials TEXT;");
       console.log("MIGRACJA: Dodano kolumnę 'defaultMaterials' do tabeli 'services'.");
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       await db.execAsync("ALTER TABLE clients ADD COLUMN reminders TEXT;");
       console.log("MIGRACJA: Dodano kolumnę 'reminders' do tabeli 'clients'.");
-    } catch (e) {}
+    } catch (e) { }
+
+    try {
+      await db.execAsync("ALTER TABLE clients ADD COLUMN isCompany INTEGER DEFAULT 0;");
+      console.log("MIGRACJA: Dodano kolumnę 'isCompany' do tabeli 'clients'.");
+    } catch (e) { }
 
     console.log("Database initialized / migrated successfully.");
   } catch (error) {

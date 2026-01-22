@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   TextInput, Modal, Alert, Linking, Platform, KeyboardAvoidingView,
-  Keyboard
+  Keyboard, Switch
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
@@ -73,8 +73,8 @@ const ClientList: React.FC = () => {
       if (!matchesSearch) return false;
 
       // 2. Logika Filtrów
-      if (activeFilter === 'company') return !!c.companyName;
-      if (activeFilter === 'private') return !c.companyName;
+      if (activeFilter === 'company') return c.isCompany === true;
+      if (activeFilter === 'private') return c.isCompany !== true;
       if (activeFilter === 'tasks') return c.reminders && c.reminders.length > 0;
 
       return true;
@@ -114,7 +114,7 @@ const ClientList: React.FC = () => {
       setFormData({
         firstName: '', lastName: '', phone: '', email: '', companyName: '',
         nip: '', street: '', houseNo: '', apartmentNo: '', postalCode: '',
-        city: '', notes: '', reminders: []
+        city: '', notes: '', reminders: [], isCompany: false
       });
     }
     setIsModalOpen(true);
@@ -134,16 +134,16 @@ const ClientList: React.FC = () => {
     } as Client;
 
     try {
-        if (editingClient) {
-            await updateClient(payload);
-            showToast("Zaktualizowano klienta", "success");
-        } else {
-            await addClient(payload);
-            showToast("Dodano nowego klienta", "success");
-        }
+      if (editingClient) {
+        await updateClient(payload);
+        showToast("Zaktualizowano klienta", "success");
+      } else {
+        await addClient(payload);
+        showToast("Dodano nowego klienta", "success");
+      }
     } catch (e) {
-        console.error(e);
-        showToast("Błąd zapisu", "error");
+      console.error(e);
+      showToast("Błąd zapisu", "error");
     }
 
     if (Platform.OS !== 'web') Keyboard.dismiss();
@@ -176,8 +176,8 @@ const ClientList: React.FC = () => {
 
   const handleSaveReminder = async () => {
     if (!reminderModal.client || !newReminder.topic) {
-        showToast("Wpisz temat zadania", "error");
-        return;
+      showToast("Wpisz temat zadania", "error");
+      return;
     }
 
     const reminder: ClientReminder = {
@@ -192,10 +192,10 @@ const ClientList: React.FC = () => {
 
     // CRITICAL FIX: Ensure we are using the FRESH client object from state, not the stale modal prop
     const currentClient = clients.find(c => c.id === reminderModal.client?.id);
-    
+
     if (!currentClient) {
-        showToast("Nie znaleziono klienta", "error");
-        return;
+      showToast("Nie znaleziono klienta", "error");
+      return;
     }
 
     const updated = {
@@ -204,12 +204,12 @@ const ClientList: React.FC = () => {
     };
 
     try {
-        await updateClient(updated);
-        await scheduleNotification(reminder, `${updated.firstName} ${updated.lastName}`);
-        showToast("Zadanie dodane", "success");
+      await updateClient(updated);
+      await scheduleNotification(reminder, `${updated.firstName} ${updated.lastName}`);
+      showToast("Zadanie dodane", "success");
     } catch (e) {
-        console.error(e);
-        showToast("Błąd dodawania zadania", "error");
+      console.error(e);
+      showToast("Błąd dodawania zadania", "error");
     }
 
     if (Platform.OS !== 'web') Keyboard.dismiss();
@@ -253,8 +253,16 @@ const ClientList: React.FC = () => {
                 <Text style={[styles.avatarText, { color: colors.accent }]}>{client.firstName[0]}{client.lastName[0]}</Text>
               </View>
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={[styles.nameText, { color: colors.text }]}>{client.firstName} {client.lastName}</Text>
-                <Text style={[styles.subText, { color: colors.textSecondary }]}>{client.companyName || 'Osoba prywatna'}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={[styles.nameText, { color: colors.text }]}>{client.firstName} {client.lastName}</Text>
+                  {client.isCompany && (
+                    <View style={[styles.firmaBadge, { backgroundColor: colors.accent }]}>
+                      <Briefcase size={10} color="#fff" />
+                      <Text style={styles.firmaBadgeText}>FIRMA</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.subText, { color: colors.textSecondary }]}>{client.companyName || (client.isCompany ? 'Firma' : 'Osoba prywatna')}</Text>
               </View>
               <View style={styles.cardActions}>
                 <TouchableOpacity onPress={() => Linking.openURL(`tel:${client.phone}`)} style={[styles.circleAction, { backgroundColor: colors.success }]}>
@@ -292,15 +300,17 @@ const ClientList: React.FC = () => {
                 <Edit2 size={14} color={colors.textSecondary} /><Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>EDYTUJ</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => {
-                  Alert.alert("Usuń klienta", "Czy na pewno?", [
-                      { text: "Anuluj", style: "cancel" },
-                      { text: "Usuń", style: "destructive", onPress: () => {
-                          deleteClient(client.id);
-                          showToast("Klient usunięty", "info");
-                      }}
-                  ])
+                Alert.alert("Usuń klienta", "Czy na pewno?", [
+                  { text: "Anuluj", style: "cancel" },
+                  {
+                    text: "Usuń", style: "destructive", onPress: () => {
+                      deleteClient(client.id);
+                      showToast("Klient usunięty", "info");
+                    }
+                  }
+                ])
               }} style={styles.footerBtn}>
-                <Trash2 size={14} color={colors.danger} /><Text style={[styles.footerBtnText, {color: colors.danger}]}>USUŃ</Text>
+                <Trash2 size={14} color={colors.danger} /><Text style={[styles.footerBtnText, { color: colors.danger }]}>USUŃ</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -313,8 +323,8 @@ const ClientList: React.FC = () => {
       </TouchableOpacity>
 
       {/* MODAL KLIENTA */}
-      <Modal 
-        visible={isModalOpen} 
+      <Modal
+        visible={isModalOpen}
         animationType="slide"
         onRequestClose={() => {
           if (Platform.OS !== 'web' && Keyboard && Keyboard.dismiss) Keyboard.dismiss();
@@ -330,25 +340,37 @@ const ClientList: React.FC = () => {
             <KeyboardAvoidingView behavior="padding">
               <Label text="DANE OSOBOWE" colors={colors} styles={styles} />
               <View style={styles.row}>
-                <Input label="Imię*" value={formData.firstName} onChangeText={(v:any)=>setFormData({...formData, firstName:v})} colors={colors} styles={styles} />
-                <Input label="Nazwisko*" value={formData.lastName} onChangeText={(v:any)=>setFormData({...formData, lastName:v})} colors={colors} styles={styles} />
+                <Input label="Imię*" value={formData.firstName} onChangeText={(v: any) => setFormData({ ...formData, firstName: v })} colors={colors} styles={styles} />
+                <Input label="Nazwisko*" value={formData.lastName} onChangeText={(v: any) => setFormData({ ...formData, lastName: v })} colors={colors} styles={styles} />
               </View>
-              <Input label="Telefon*" value={formData.phone} onChangeText={(v:any)=>setFormData({...formData, phone:v})} colors={colors} styles={styles} keyboardType="phone-pad" />
-              <Input label="Email" value={formData.email} onChangeText={(v:any)=>setFormData({...formData, email:v})} colors={colors} styles={styles} keyboardType="email-address" />
+              <Input label="Telefon*" value={formData.phone} onChangeText={(v: any) => setFormData({ ...formData, phone: v })} colors={colors} styles={styles} keyboardType="phone-pad" />
+              <Input label="Email" value={formData.email} onChangeText={(v: any) => setFormData({ ...formData, email: v })} colors={colors} styles={styles} keyboardType="email-address" />
 
               <Label text="DANE FIRMY" colors={colors} styles={styles} />
-              <Input label="Nazwa firmy" value={formData.companyName} onChangeText={(v:any)=>setFormData({...formData, companyName:v})} colors={colors} styles={styles} />
-              <Input label="NIP" value={formData.nip} onChangeText={(v:any)=>setFormData({...formData, nip:v})} colors={colors} styles={styles} keyboardType="numeric" />
+              <View style={[styles.switchRow, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.switchLabel, { color: colors.text }]}>Klient firmowy</Text>
+                  <Text style={[styles.switchHint, { color: colors.textMuted }]}>Włącz jeśli wystawiasz na firmę</Text>
+                </View>
+                <Switch
+                  value={formData.isCompany || false}
+                  onValueChange={(v) => setFormData({ ...formData, isCompany: v })}
+                  trackColor={{ false: colors.border, true: colors.accent }}
+                  thumbColor={formData.isCompany ? '#fff' : colors.textMuted}
+                />
+              </View>
+              <Input label="Nazwa firmy" value={formData.companyName} onChangeText={(v: any) => setFormData({ ...formData, companyName: v })} colors={colors} styles={styles} />
+              <Input label="NIP" value={formData.nip} onChangeText={(v: any) => setFormData({ ...formData, nip: v })} colors={colors} styles={styles} keyboardType="numeric" />
 
               <Label text="ADRES" colors={colors} styles={styles} />
-              <Input label="Ulica" value={formData.street} onChangeText={(v:any)=>setFormData({...formData, street:v})} colors={colors} styles={styles} />
+              <Input label="Ulica" value={formData.street} onChangeText={(v: any) => setFormData({ ...formData, street: v })} colors={colors} styles={styles} />
               <View style={styles.row}>
-                <Input label="Nr domu" value={formData.houseNo} onChangeText={(v:any)=>setFormData({...formData, houseNo:v})} colors={colors} styles={styles} />
-                <Input label="Nr lokalu" value={formData.apartmentNo} onChangeText={(v:any)=>setFormData({...formData, apartmentNo:v})} colors={colors} styles={styles} />
+                <Input label="Nr domu" value={formData.houseNo} onChangeText={(v: any) => setFormData({ ...formData, houseNo: v })} colors={colors} styles={styles} />
+                <Input label="Nr lokalu" value={formData.apartmentNo} onChangeText={(v: any) => setFormData({ ...formData, apartmentNo: v })} colors={colors} styles={styles} />
               </View>
               <View style={styles.row}>
-                <Input label="Kod pocztowy" value={formData.postalCode} onChangeText={(v:any)=>setFormData({...formData, postalCode:v})} colors={colors} styles={styles} />
-                <Input label="Miejscowość" value={formData.city} onChangeText={(v:any)=>setFormData({...formData, city:v})} colors={colors} styles={styles} />
+                <Input label="Kod pocztowy" value={formData.postalCode} onChangeText={(v: any) => setFormData({ ...formData, postalCode: v })} colors={colors} styles={styles} />
+                <Input label="Miejscowość" value={formData.city} onChangeText={(v: any) => setFormData({ ...formData, city: v })} colors={colors} styles={styles} />
               </View>
 
               <TouchableOpacity onPress={handleSaveClient} style={[styles.saveBtn, { backgroundColor: colors.accent }]}>
@@ -361,9 +383,9 @@ const ClientList: React.FC = () => {
       </Modal>
 
       {/* MODAL ZADANIA */}
-      <Modal 
-        visible={reminderModal.isOpen} 
-        transparent 
+      <Modal
+        visible={reminderModal.isOpen}
+        transparent
         animationType="fade"
         onRequestClose={() => {
           if (Platform.OS !== 'web' && Keyboard && Keyboard.dismiss) Keyboard.dismiss();
@@ -378,7 +400,7 @@ const ClientList: React.FC = () => {
               placeholderTextColor={colors.textMuted}
               style={[styles.remInput, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
               value={newReminder.topic}
-              onChangeText={(v) => setNewReminder({...newReminder, topic: v})}
+              onChangeText={(v) => setNewReminder({ ...newReminder, topic: v })}
             />
             <TextInput
               placeholder="Notatka (opcjonalnie)..."
@@ -386,7 +408,7 @@ const ClientList: React.FC = () => {
               multiline
               style={[styles.remInput, { backgroundColor: colors.background, color: colors.text, height: 80, textAlignVertical: 'top', borderColor: colors.border, borderWidth: 1 }]}
               value={newReminder.note}
-              onChangeText={(v) => setNewReminder({...newReminder, note: v})}
+              onChangeText={(v) => setNewReminder({ ...newReminder, note: v })}
             />
             <TouchableOpacity
               onPress={() => {
@@ -416,7 +438,7 @@ const ClientList: React.FC = () => {
             <TouchableOpacity onPress={handleSaveReminder} style={[styles.saveBtn, { backgroundColor: colors.accent }]}>
               <Text style={styles.saveBtnText}>ZAPISZ I POWIADOM</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setReminderModal({isOpen:false, client:null})} style={{marginTop:15}}><Text style={{color:colors.textSecondary, textAlign:'center'}}>Anuluj</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setReminderModal({ isOpen: false, client: null })} style={{ marginTop: 15 }}><Text style={{ color: colors.textSecondary, textAlign: 'center' }}>Anuluj</Text></TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -427,22 +449,22 @@ const ClientList: React.FC = () => {
 
 // --- Komponenty pomocnicze ---
 const FilterTab = ({ label, active, onPress, icon, count, colors, styles }: any) => (
-  <TouchableOpacity 
-    onPress={onPress} 
+  <TouchableOpacity
+    onPress={onPress}
     style={[
-      styles.tab, 
+      styles.tab,
       active ? { backgroundColor: colors.accent } : { backgroundColor: colors.surfaceSubtle }
     ]}
   >
     {icon && React.cloneElement(icon, { color: active ? '#fff' : colors.textSecondary })}
     <Text style={[styles.tabText, { color: active ? '#fff' : colors.textSecondary }]}>{label}</Text>
     {count !== undefined && (
-        <Text style={[
-            styles.countBadge, 
-            active ? { backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff' } : { backgroundColor: colors.border, color: colors.textSecondary }
-        ]}>
-            {count}
-        </Text>
+      <Text style={[
+        styles.countBadge,
+        active ? { backgroundColor: 'rgba(255,255,255,0.2)', color: '#fff' } : { backgroundColor: colors.border, color: colors.textSecondary }
+      ]}>
+        {count}
+      </Text>
     )}
   </TouchableOpacity>
 );
@@ -502,7 +524,12 @@ const getStyles = (colors: any) => StyleSheet.create({
   remInput: { height: 50, borderRadius: 12, paddingHorizontal: 15, marginBottom: 15, fontWeight: '600' },
   dateBtn: { height: 50, borderRadius: 12, borderWidth: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, gap: 10, marginBottom: 15 },
   dateBtnText: { fontSize: 14, fontWeight: '700' },
-  row: { flexDirection: 'row' }
+  row: { flexDirection: 'row' },
+  firmaBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  firmaBadgeText: { fontSize: 9, fontWeight: '800', color: '#fff', letterSpacing: 0.5 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 15, borderWidth: 1 },
+  switchLabel: { fontSize: 14, fontWeight: '700' },
+  switchHint: { fontSize: 11, marginTop: 2 }
 });
 
 export default ClientList;

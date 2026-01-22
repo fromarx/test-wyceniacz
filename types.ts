@@ -73,6 +73,7 @@ export interface Client {
   city: string;
   notes?: string; 
   reminders?: ClientReminder[];
+  isCompany?: boolean;
   createdAt: string;
 }
 

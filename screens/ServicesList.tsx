@@ -29,11 +29,11 @@ const ServicesList: React.FC = () => {
   const [newCatName, setNewCatName] = useState('');
 
   const [collapsedCats, setCollapsedCats] = useState<Record<string, boolean>>({});
-  
+
   // Animacje
   const modalOpacity = useRef(new Animated.Value(0)).current;
   const modalScale = useRef(new Animated.Value(0.9)).current;
-  
+
   useEffect(() => {
     if (isModalOpen || isCatModalOpen) {
       Animated.parallel([
@@ -57,9 +57,13 @@ const ServicesList: React.FC = () => {
 
   const [formData, setFormData] = useState({
     name: '', description: '', netPrice: '', vatRate: '8',
-    unit: 'm2' as UnitOfMeasure, categoryId: 'cat_general', 
+    unit: 'm2' as UnitOfMeasure, categoryId: 'cat_general',
     materialMode: 'estimated' as MaterialMode, estimatedMaterialPrice: '',
     materials: [] as MaterialItem[]
+  });
+
+  const [tempMaterial, setTempMaterial] = useState({
+    name: '', price: '', consumption: ''
   });
 
   const handleAddCategory = async () => {
@@ -75,7 +79,7 @@ const ServicesList: React.FC = () => {
   };
 
   useEffect(() => {
-    setActiveScreen('Usługi'); 
+    setActiveScreen('Usługi');
   }, []);
 
   const handleSubmit = async () => {
@@ -138,7 +142,7 @@ const ServicesList: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const filteredServices = services.filter(s => 
+  const filteredServices = services.filter(s =>
     s.name && s.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -173,11 +177,11 @@ const ServicesList: React.FC = () => {
           return (
             <View key={cat.id} style={[styles.catSection, shadows.sm]}>
               <TouchableOpacity
-                onPress={() => setCollapsedCats(prev => ({...prev, [cat.id]: !isCollapsed}))}
+                onPress={() => setCollapsedCats(prev => ({ ...prev, [cat.id]: !isCollapsed }))}
                 style={[
-                  styles.catHeader, 
+                  styles.catHeader,
                   {
-                    backgroundColor: colors.surface, 
+                    backgroundColor: colors.surface,
                     borderBottomWidth: isCollapsed ? 0 : 1,
                     borderBottomColor: colors.border,
                   }
@@ -190,16 +194,18 @@ const ServicesList: React.FC = () => {
                     <Text style={[styles.badgeText, { color: colors.textSecondary }]}>{catServices.length}</Text>
                   </View>
                 </View>
-                
+
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   {cat.id !== 'cat_general' && (
                     <TouchableOpacity onPress={() => {
                       Alert.alert("Usuń kategorię", `Czy usunąć "${cat.name}"? Usługi zostaną przeniesione do kategorii Ogólna.`, [
                         { text: "Anuluj", style: "cancel" },
-                        { text: "Usuń", style: "destructive", onPress: () => {
-                          deleteCategory(cat.id);
-                          showToast("Kategoria usunięta", "info");
-                        }}
+                        {
+                          text: "Usuń", style: "destructive", onPress: () => {
+                            deleteCategory(cat.id);
+                            showToast("Kategoria usunięta", "info");
+                          }
+                        }
                       ]);
                     }}>
                       <Trash2 size={16} color={colors.textMuted} />
@@ -248,17 +254,17 @@ const ServicesList: React.FC = () => {
               </View>
               <View style={styles.serviceList}>
                 {orphaned.map((s, index) => (
-                  <ServiceRow 
-                    key={s.id} 
-                    service={s} 
+                  <ServiceRow
+                    key={s.id}
+                    service={s}
                     colors={colors}
                     styles={styles}
                     isLast={index === orphaned.length - 1}
-                    onEdit={() => handleEdit(s)} 
+                    onEdit={() => handleEdit(s)}
                     onDelete={() => {
                       deleteService(s.id);
                       showToast("Usługa usunięta", "info");
-                    }} 
+                    }}
                   />
                 ))}
               </View>
@@ -267,9 +273,9 @@ const ServicesList: React.FC = () => {
         })()}
       </ScrollView>
 
-      <TouchableOpacity 
-        onPress={() => setIsModalOpen(true)} 
-        style={[styles.fab, { backgroundColor: colors.accent, ...shadows.lg }]} 
+      <TouchableOpacity
+        onPress={() => setIsModalOpen(true)}
+        style={[styles.fab, { backgroundColor: colors.accent, ...shadows.lg }]}
         activeOpacity={0.8}
       >
         <Plus size={32} color="#fff" />
@@ -278,33 +284,33 @@ const ServicesList: React.FC = () => {
       {/* MODAL KATEGORII */}
       <Modal visible={isCatModalOpen} transparent animationType="fade" onRequestClose={() => setIsCatModalOpen(false)}>
         <View style={styles.modalOverlay}>
-            <Animated.View 
-              style={[
-                styles.catModalContent, 
-                { 
-                  backgroundColor: colors.surface,
-                  opacity: modalOpacity,
-                  transform: [{ scale: modalScale }]
-                }
-              ]}
-            >
-                <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 15 }]}>Nowa kategoria</Text>
-                <TextInput
-                    style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
-                    placeholder="Wpisz nazwę..."
-                    placeholderTextColor={colors.textMuted}
-                    value={newCatName}
-                    onChangeText={setNewCatName}
-                />
-                <View style={[styles.row, { marginTop: 20 }]}>
-                    <TouchableOpacity onPress={() => setIsCatModalOpen(false)} style={[styles.saveBtn, { flex: 1, backgroundColor: colors.surfaceSubtle }]}>
-                        <Text style={[styles.saveBtnText, { color: colors.textSecondary }]}>ANULUJ</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleAddCategory} style={[styles.saveBtn, { flex: 1, backgroundColor: colors.accent }]}>
-                        <Text style={[styles.saveBtnText, { color: '#fff' }]}>DODAJ</Text>
-                    </TouchableOpacity>
-                </View>
-            </Animated.View>
+          <Animated.View
+            style={[
+              styles.catModalContent,
+              {
+                backgroundColor: colors.surface,
+                opacity: modalOpacity,
+                transform: [{ scale: modalScale }]
+              }
+            ]}
+          >
+            <Text style={[styles.modalTitle, { color: colors.text, marginBottom: 15 }]}>Nowa kategoria</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
+              placeholder="Wpisz nazwę..."
+              placeholderTextColor={colors.textMuted}
+              value={newCatName}
+              onChangeText={setNewCatName}
+            />
+            <View style={[styles.row, { marginTop: 20 }]}>
+              <TouchableOpacity onPress={() => setIsCatModalOpen(false)} style={[styles.saveBtn, { flex: 1, backgroundColor: colors.surfaceSubtle }]}>
+                <Text style={[styles.saveBtnText, { color: colors.textSecondary }]}>ANULUJ</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleAddCategory} style={[styles.saveBtn, { flex: 1, backgroundColor: colors.accent }]}>
+                <Text style={[styles.saveBtnText, { color: '#fff' }]}>DODAJ</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
         </View>
       </Modal>
 
@@ -321,7 +327,7 @@ const ServicesList: React.FC = () => {
             <View style={[styles.pickerBox, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
               <Picker
                 selectedValue={formData.categoryId}
-                onValueChange={(v) => setFormData({...formData, categoryId: v})}
+                onValueChange={(v) => setFormData({ ...formData, categoryId: v })}
                 style={{ color: colors.text }}
                 dropdownIconColor={colors.text}
               >
@@ -333,7 +339,7 @@ const ServicesList: React.FC = () => {
             <TextInput
               style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
               value={formData.name}
-              onChangeText={(v) => setFormData({...formData, name: v})}
+              onChangeText={(v) => setFormData({ ...formData, name: v })}
             />
 
             <View style={styles.row}>
@@ -343,7 +349,7 @@ const ServicesList: React.FC = () => {
                   keyboardType="numeric"
                   style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
                   value={formData.netPrice}
-                  onChangeText={(v) => setFormData({...formData, netPrice: v})}
+                  onChangeText={(v) => setFormData({ ...formData, netPrice: v })}
                 />
               </View>
               <View style={{ flex: 1 }}>
@@ -351,17 +357,132 @@ const ServicesList: React.FC = () => {
                 <View style={[styles.pickerBox, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
                   <Picker
                     selectedValue={formData.unit}
-                    onValueChange={(v) => setFormData({...formData, unit: v as UnitOfMeasure})}
+                    onValueChange={(v) => setFormData({ ...formData, unit: v as UnitOfMeasure })}
                     style={{ color: colors.text }}
                     dropdownIconColor={colors.text}
                   >
                     <Picker.Item label="m2" value="m2" />
                     <Picker.Item label="mb" value="mb" />
                     <Picker.Item label="szt" value="szt" />
+                    <Picker.Item label="m3" value="m3" />
+                    <Picker.Item label="opak" value="opak" />
                   </Picker>
                 </View>
               </View>
             </View>
+
+            {/* SEKCJA MATERIAŁÓW */}
+            <Text style={[styles.label, { color: colors.textSecondary, marginTop: 20 }]}>MATERIAŁY</Text>
+            <View style={[styles.modeToggle, { gap: 10 }]}>
+              <TouchableOpacity
+                onPress={() => setFormData({ ...formData, materialMode: 'estimated' })}
+                style={[
+                  styles.modeBtn,
+                  formData.materialMode === 'estimated'
+                    ? { backgroundColor: colors.accent }
+                    : { backgroundColor: colors.surfaceSubtle, borderWidth: 1, borderColor: colors.border }
+                ]}
+              >
+                <Package size={16} color={formData.materialMode === 'estimated' ? '#fff' : colors.textSecondary} />
+                <Text style={[styles.modeBtnText, { color: formData.materialMode === 'estimated' ? '#fff' : colors.textSecondary }]}>RYCZAŁT</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setFormData({ ...formData, materialMode: 'detailed' })}
+                style={[
+                  styles.modeBtn,
+                  formData.materialMode === 'detailed'
+                    ? { backgroundColor: colors.accent }
+                    : { backgroundColor: colors.surfaceSubtle, borderWidth: 1, borderColor: colors.border }
+                ]}
+              >
+                <Package size={16} color={formData.materialMode === 'detailed' ? '#fff' : colors.textSecondary} />
+                <Text style={[styles.modeBtnText, { color: formData.materialMode === 'detailed' ? '#fff' : colors.textSecondary }]}>LISTA MAT.</Text>
+              </TouchableOpacity>
+            </View>
+
+            {formData.materialMode === 'estimated' ? (
+              <View>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>CENA MATERIAŁU NA J.M.</Text>
+                <TextInput
+                  placeholder="np. 25 zł / m2"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="numeric"
+                  style={[styles.input, { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
+                  value={formData.estimatedMaterialPrice}
+                  onChangeText={(v) => setFormData({ ...formData, estimatedMaterialPrice: v })}
+                />
+              </View>
+            ) : (
+              <View style={[styles.materialBox, { backgroundColor: colors.surfaceSubtle, borderColor: colors.border }]}>
+                <Text style={[styles.materialHint, { color: colors.textMuted }]}>
+                  Dodaj domyślne materiały dla tej usługi. Będą automatycznie dołączane do wyceny.
+                </Text>
+                {formData.materials.map((m, idx) => (
+                  <View key={m.id || idx} style={[styles.materialRow, { borderBottomColor: colors.border }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.materialName, { color: colors.text }]}>{m.name}</Text>
+                      <Text style={[styles.materialInfo, { color: colors.textMuted }]}>{m.price} zł × {m.consumption || 1} {m.unit}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setFormData({
+                      ...formData,
+                      materials: formData.materials.filter((_, i) => i !== idx)
+                    })}>
+                      <Trash2 size={16} color={colors.danger} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                <View style={styles.addMaterialForm}>
+                  <TextInput
+                    placeholder="Nazwa materiału"
+                    placeholderTextColor={colors.textMuted}
+                    style={[styles.input, { backgroundColor: colors.background, color: colors.text, borderColor: colors.border, borderWidth: 1, marginBottom: 8 }]}
+                    value={tempMaterial.name}
+                    onChangeText={(v) => setTempMaterial({ ...tempMaterial, name: v })}
+                  />
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TextInput
+                      placeholder="Cena"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      style={[styles.input, { flex: 1, backgroundColor: colors.background, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
+                      value={tempMaterial.price}
+                      onChangeText={(v) => setTempMaterial({ ...tempMaterial, price: v })}
+                    />
+                    <TextInput
+                      placeholder="Zużycie/jm"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      style={[styles.input, { flex: 1, backgroundColor: colors.background, color: colors.text, borderColor: colors.border, borderWidth: 1 }]}
+                      value={tempMaterial.consumption}
+                      onChangeText={(v) => setTempMaterial({ ...tempMaterial, consumption: v })}
+                    />
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (!tempMaterial.name || !tempMaterial.price) {
+                        showToast("Podaj nazwę i cenę", "error");
+                        return;
+                      }
+                      const newMat: MaterialItem = {
+                        id: `mat_${Date.now()}`,
+                        name: tempMaterial.name,
+                        price: parseFloat(tempMaterial.price) || 0,
+                        unit: 'szt',
+                        quantity: 1,
+                        consumption: parseFloat(tempMaterial.consumption) || 1
+                      };
+                      setFormData({ ...formData, materials: [...formData.materials, newMat] });
+                      setTempMaterial({ name: '', price: '', consumption: '' });
+                      showToast("Dodano materiał", "success");
+                    }}
+                    style={[styles.addMaterialBtn, { backgroundColor: colors.accent }]}
+                  >
+                    <Plus size={16} color="#fff" />
+                    <Text style={styles.addMaterialBtnText}>DODAJ MATERIAŁ</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             <TouchableOpacity onPress={handleSubmit} style={[styles.saveBtn, { backgroundColor: colors.accent, marginTop: 30 }]}>
               <Save size={20} color="#fff" />
@@ -376,11 +497,11 @@ const ServicesList: React.FC = () => {
 
 const ServiceRow = ({ service, colors, styles, isLast, onEdit, onDelete }: any) => {
   return (
-    <View 
+    <View
       style={[
-        styles.serviceRow, 
-        { 
-          backgroundColor: colors.surface, 
+        styles.serviceRow,
+        {
+          backgroundColor: colors.surface,
           borderBottomWidth: isLast ? 0 : 1,
           borderBottomColor: colors.borderSubtle || colors.border
         }
@@ -400,7 +521,7 @@ const ServiceRow = ({ service, colors, styles, isLast, onEdit, onDelete }: any) 
           )}
         </View>
       </View>
-      
+
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <TouchableOpacity onPress={onEdit}>
           <Edit2 size={18} color={colors.textSecondary} />
@@ -420,19 +541,19 @@ const getStyles = (colors: any) => StyleSheet.create({
   searchWrapper: { flex: 1, height: 50, borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15 },
   searchInput: { flex: 1, marginLeft: 10, fontWeight: 'bold' },
   catBtn: { width: 50, height: 50, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-  catSection: { 
-    marginBottom: 16, 
-    marginHorizontal: 16, 
-    borderRadius: 16, 
-    overflow: 'hidden', 
-    borderWidth: 1, 
-    borderColor: colors.border 
+  catSection: {
+    marginBottom: 16,
+    marginHorizontal: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border
   },
-  catHeader: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    padding: 16, 
+  catHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
     zIndex: 2,
   },
   catTitle: { fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
@@ -449,15 +570,15 @@ const getStyles = (colors: any) => StyleSheet.create({
   servicePrice: { fontSize: 14, fontWeight: '800' },
   tag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   tagText: { fontSize: 10, fontWeight: '600' },
-  fab: { 
-    position: 'absolute', 
+  fab: {
+    position: 'absolute',
     bottom: 30, // Pozycja dostosowana do braku navbara w niektórych widokach
-    right: 24, 
-    width: 60, 
-    height: 60, 
-    borderRadius: 20, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
+    right: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalBody: { flex: 1 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1 },
@@ -468,16 +589,27 @@ const getStyles = (colors: any) => StyleSheet.create({
   input: { height: 50, borderRadius: 12, paddingHorizontal: 15, fontWeight: '600' },
   pickerBox: { borderRadius: 12, height: 50, justifyContent: 'center', overflow: 'hidden' },
   row: { flexDirection: 'row', gap: 10 },
-  saveBtn: { 
-    height: 56, 
-    borderRadius: 16, 
-    flexDirection: 'row', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    gap: 10, 
+  saveBtn: {
+    height: 56,
+    borderRadius: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
     marginTop: 10,
   },
-  saveBtnText: { fontWeight: '900', fontSize: 15 }
+  saveBtnText: { fontWeight: '900', fontSize: 15 },
+  modeToggle: { flexDirection: 'row', marginBottom: 15 },
+  modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: 12 },
+  modeBtnText: { fontWeight: '800', fontSize: 11 },
+  materialBox: { padding: 16, borderRadius: 16, marginBottom: 10, borderWidth: 1 },
+  materialHint: { fontSize: 12, marginBottom: 12, lineHeight: 18 },
+  materialRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
+  materialName: { fontSize: 14, fontWeight: '700' },
+  materialInfo: { fontSize: 12, marginTop: 2 },
+  addMaterialForm: { marginTop: 12 },
+  addMaterialBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 44, borderRadius: 12, marginTop: 12 },
+  addMaterialBtnText: { color: '#fff', fontWeight: '800', fontSize: 12 }
 });
 
 export default ServicesList;

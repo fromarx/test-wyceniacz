@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { 
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, 
+import {
+  View, Text, TouchableOpacity, ScrollView, StyleSheet,
   ActivityIndicator, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useAppContext } from '../store/AppContext';
-import { 
-  ArrowLeft, CheckCircle, Clock, Edit3, ExternalLink, 
-  Package, Receipt, User, MapPin, Check 
+import {
+  ArrowLeft, CheckCircle, Clock, Edit3, ExternalLink,
+  Package, Receipt, User, MapPin, Check, Download
 } from 'lucide-react-native';
 import { QuoteStatus } from '../types';
 import { FinanceUtils } from '../utils/FinanceUtils';
@@ -21,7 +21,8 @@ const QuoteDetails: React.FC = () => {
   const { state, updateQuote } = useAppContext();
   const { darkMode, user } = state;
   const [isGenerating, setIsGenerating] = useState(false);
-  
+  const [isSaving, setIsSaving] = useState(false);
+
   const quote = state.quotes.find(q => q.id === id);
   if (!quote) return null;
 
@@ -32,10 +33,10 @@ const QuoteDetails: React.FC = () => {
   const handleDownloadPdf = async () => {
     if (isGenerating) return;
     setIsGenerating(true);
-    
+
     try {
       await PdfGenerator.generateAndShare(quote, user);
-      
+
       if (quote.status === QuoteStatus.DRAFT) {
         updateQuote({ ...quote, status: QuoteStatus.SENT });
       }
@@ -44,6 +45,20 @@ const QuoteDetails: React.FC = () => {
       Alert.alert("Błąd", "Nie udało się wygenerować PDF.");
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleSavePdf = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+
+    try {
+      await PdfGenerator.saveToDevice(quote, user);
+    } catch (error) {
+      console.error("PDF Save Error:", error);
+      Alert.alert("Błąd", "Nie udało się zapisać PDF.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -56,7 +71,7 @@ const QuoteDetails: React.FC = () => {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: darkMode ? '#020617' : '#f8fafc' }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        
+
         {/* Header Actions */}
         <View style={styles.headerRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -64,7 +79,7 @@ const QuoteDetails: React.FC = () => {
             <Text style={[styles.backText, { color: darkMode ? '#64748b' : '#475569' }]}>WSTECZ</Text>
           </TouchableOpacity>
           <View style={styles.actionGroup}>
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => navigation.navigate('NewQuote', { id: quote.id })}
               style={[styles.editBtn, { backgroundColor: darkMode ? '#0f172a' : '#fff', borderColor: darkMode ? '#1e293b' : '#cbd5e1' }]}
             >
@@ -79,7 +94,7 @@ const QuoteDetails: React.FC = () => {
         </View>
 
         {!isAccepted && (
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => handleStatusChange(QuoteStatus.ACCEPTED)}
             style={styles.acceptBigBtn}
           >
@@ -100,9 +115,9 @@ const QuoteDetails: React.FC = () => {
               <Text style={[styles.dateText, { color: darkMode ? '#94a3b8' : '#475569' }]}>{quote.date}</Text>
             </View>
           </View>
-          
+
           <View style={[styles.divider, { borderBottomColor: darkMode ? '#1e293b' : '#f1f5f9' }]} />
-          
+
           <View style={styles.gridRow}>
             <View style={styles.gridCol}>
               <View style={styles.iconLabel}><User size={10} color="#3b82f6" /><Text style={styles.label}>KLIENT</Text></View>
@@ -135,7 +150,7 @@ const QuoteDetails: React.FC = () => {
               <Text style={styles.statValue}>{totals.totalVat.toLocaleString()} zł</Text>
             </View>
           </View>
-          
+
           <View style={styles.totalSection}>
             <View>
               <Text style={styles.totalLabel}>SUMA DO ZAPŁATY:</Text>
@@ -155,7 +170,7 @@ const QuoteDetails: React.FC = () => {
                 <Text style={[styles.itemName, { color: darkMode ? '#f1f5f9' : '#0f172a' }]}>{item.name.toUpperCase()}</Text>
                 <Text style={styles.itemPriceTotal}>{(FinanceUtils.calculateItemLabor(item) + FinanceUtils.calculateItemMaterials(item)).toLocaleString()} zł</Text>
               </View>
-              
+
               <View style={[styles.itemDetailRow, { backgroundColor: darkMode ? '#020617' : '#f8fafc' }]}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.itemDetailLabel}>ROBOCIZNA</Text>
@@ -170,17 +185,30 @@ const QuoteDetails: React.FC = () => {
           ))}
         </View>
 
-        {/* PDF Button */}
-        <TouchableOpacity 
-          onPress={handleDownloadPdf}
-          disabled={isGenerating}
-          style={[styles.pdfBtn, isGenerating && styles.pdfBtnDisabled]}
-        >
-          {isGenerating ? <ActivityIndicator color="#fff" /> : <ExternalLink size={20} color="#fff" />}
-          <Text style={styles.pdfBtnText}>
-            {isGenerating ? 'PRZYGOTOWUJĘ PDF...' : 'UDOSTĘPNIJ PDF'}
-          </Text>
-        </TouchableOpacity>
+        {/* PDF Buttons */}
+        <View style={styles.pdfButtonsRow}>
+          <TouchableOpacity
+            onPress={handleSavePdf}
+            disabled={isSaving}
+            style={[styles.pdfBtnSecondary, isSaving && styles.pdfBtnDisabled, { borderColor: darkMode ? '#1e293b' : '#cbd5e1' }]}
+          >
+            {isSaving ? <ActivityIndicator color="#3b82f6" /> : <Download size={20} color="#3b82f6" />}
+            <Text style={[styles.pdfBtnSecondaryText, { color: '#3b82f6' }]}>
+              {isSaving ? 'ZAPISUJĘ...' : 'POBIERZ PDF'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={handleDownloadPdf}
+            disabled={isGenerating}
+            style={[styles.pdfBtn, isGenerating && styles.pdfBtnDisabled]}
+          >
+            {isGenerating ? <ActivityIndicator color="#fff" /> : <ExternalLink size={20} color="#fff" />}
+            <Text style={styles.pdfBtnText}>
+              {isGenerating ? 'GENERUJĘ...' : 'WYŚLIJ PDF'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
       </ScrollView>
     </SafeAreaView>
@@ -211,7 +239,7 @@ const styles = StyleSheet.create({
   iconLabel: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
   value: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase' },
   summaryCard: { backgroundColor: '#020617', padding: 28, borderRadius: 40, marginBottom: 24, borderBottomWidth: 8, borderBottomColor: '#1e3a8a' },
-  summaryStats: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', pb: 16, marginBottom: 16 },
+  summaryStats: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingBottom: 16, marginBottom: 16 },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   statLabel: { fontSize: 9, color: '#94a3b8', fontWeight: '900', letterSpacing: 1 },
   statValue: { fontSize: 10, color: '#fff', fontWeight: '900' },
@@ -233,9 +261,12 @@ const styles = StyleSheet.create({
   itemDetailRow: { flexDirection: 'row', padding: 12, borderRadius: 16, gap: 10 },
   itemDetailLabel: { fontSize: 7, fontWeight: '900', color: '#64748b', marginBottom: 2 },
   itemDetailValue: { fontSize: 9, fontWeight: '900' },
-  pdfBtn: { backgroundColor: '#2563eb', padding: 20, borderRadius: 24, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 30, borderBottomWidth: 5, borderBottomColor: '#1e3a8a' },
-  pdfBtnDisabled: { backgroundColor: '#475569', borderBottomColor: '#1e293b' },
-  pdfBtnText: { color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 2 }
+  pdfButtonsRow: { flexDirection: 'row', gap: 12, marginTop: 30 },
+  pdfBtn: { flex: 1, backgroundColor: '#2563eb', padding: 18, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, borderBottomWidth: 4, borderBottomColor: '#1e3a8a' },
+  pdfBtnSecondary: { flex: 1, backgroundColor: 'transparent', padding: 18, borderRadius: 20, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, borderWidth: 2 },
+  pdfBtnSecondaryText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  pdfBtnDisabled: { opacity: 0.6 },
+  pdfBtnText: { color: '#fff', fontSize: 11, fontWeight: '900', letterSpacing: 1 }
 });
 
 export default QuoteDetails;

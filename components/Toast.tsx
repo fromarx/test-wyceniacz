@@ -12,8 +12,8 @@ interface ToastContextData {
 }
 
 const ToastContext = createContext<ToastContextData>({
-  showToast: () => {},
-  hideToast: () => {},
+  showToast: () => { },
+  hideToast: () => { },
 });
 
 export const useToast = () => useContext(ToastContext);
@@ -22,16 +22,16 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [visible, setVisible] = useState(false);
   const [message, setMessage] = useState('');
   const [type, setType] = useState<ToastType>('success');
-  
+
   // Animation values
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
-  
-  const timerRef = useRef<NodeJS.Timeout>();
+
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const showToast = (msg: string, t: ToastType = 'success', duration = 3000) => {
     if (timerRef.current) clearTimeout(timerRef.current);
-    
+
     setMessage(msg);
     setType(t);
     setVisible(true);
@@ -74,7 +74,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const getColors = () => {
-    switch(type) {
+    switch (type) {
       case 'success': return { bg: '#059669', icon: '#fff', text: '#fff' }; // Emerald 600
       case 'error': return { bg: '#DC2626', icon: '#fff', text: '#fff' };   // Red 600
       case 'info': return { bg: '#2563EB', icon: '#fff', text: '#fff' };    // Blue 600
@@ -83,7 +83,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const getIcon = () => {
-    switch(type) {
+    switch (type) {
       case 'success': return <CheckCircle2 size={24} color="#fff" />;
       case 'error': return <AlertCircle size={24} color="#fff" />;
       default: return <Info size={24} color="#fff" />;
@@ -96,10 +96,10 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <ToastContext.Provider value={{ showToast, hideToast }}>
       {children}
       {visible && (
-        <Animated.View 
+        <Animated.View
           style={[
-            styles.toastContainer, 
-            { 
+            styles.toastContainer,
+            {
               backgroundColor: bg,
               transform: [{ translateY }],
               opacity
