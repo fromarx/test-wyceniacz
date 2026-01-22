@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Wyceniacz",
-    "slug": "Wyceniacz",
-    "version": "1.0.1",
+    "name": "test-wyceniacz",
+    "slug": "test-wyceniacz",
+    "version": "1.0.0",
     "plugins": [
       "@react-native-community/datetimepicker",
       "expo-sqlite",
